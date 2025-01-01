@@ -1,0 +1,43 @@
+# Ignore backup files (e.g., file.txt~)
+*~
+
+# Ignore temporary files created by editors
+*.swp
+*.swo
+*.tmp
+*.bak
+
+# Ignore directories for IDEs and editors
+.idea/
+.vscode/
+
+# Ignore compiled files and build artifacts
+target/
+*.o
+*.so
+*.dylib
+*.dll
+*.exe
+
+# Ignore Cargo-related files
+Cargo.lock
+
+# Ignore logs and temporary files
+*.log
+*.pid
+*.seed
+*.csv
+
+# Ignore Docker-related files
+.dockerignore
+docker-compose.override.yml
+
+# Ignore system files
+.DS_Store
+Thumbs.db
+
+# Ignore node_modules (if applicable for front-end files)
+node_modules/
+
+# Ignore Rust-specific tools
+*.rs.bk
