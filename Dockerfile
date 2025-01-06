@@ -16,6 +16,9 @@ RUN cargo build --release
 # Copy the source code
 COPY . .
 
+RUN cargo install cargo-watch
+CMD ["cargo", "watch", "-x", "run"]
+
 # Build the app
 RUN cargo build --release
 
