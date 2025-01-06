@@ -1,29 +1,23 @@
-# Use an official Rust image for development
+# Use the official Rust image as the base
 FROM rust:latest
-
-# Install necessary tools
-RUN apt-get update && apt-get install -y libssl-dev pkg-config
 
 # Set the working directory
 WORKDIR /app
 
-# Copy only the Cargo.toml and Cargo.lock for caching
+# Copy Cargo files first to leverage Docker caching
 COPY Cargo.toml Cargo.lock ./
 
-# Build dependencies to speed up subsequent builds
+# Create an empty src directory to run `cargo fetch`
+RUN mkdir src
+
+# Fetch dependencies
+RUN cargo fetch
+
+# Copy the rest of the application source code
+COPY src ./src
+
+# Build the application
 RUN cargo build --release
 
-# Copy the source code
-COPY . .
-
-RUN cargo install cargo-watch
-CMD ["cargo", "watch", "-x", "run"]
-
-# Build the app
-RUN cargo build --release
-
-# Expose the port Leptos will use (default is 3000)
-EXPOSE 3000
-
-# Command to run the app
-CMD ["cargo", "run", "--release"]
+# Define the command to run the app
+CMD ["./target/release/my-leptos-app"]
