@@ -45,6 +45,20 @@ fn load_settings() -> (u64, usize) {
     (250, 1) // Default settings
 }
 
+/// Prompt the user for input
+fn prompt_user(prompt: &str) -> String {
+    terminal::disable_raw_mode().unwrap();
+    execute!(stdout(), terminal::Clear(ClearType::All)).unwrap();
+    println!("{}", prompt);
+
+    let mut input = String::new();
+    std::io::stdin().read_line(&mut input).unwrap();
+
+    terminal::enable_raw_mode().unwrap();
+    input.trim().to_string()
+}
+
+/// Display a preferences menu for the user to modify saved settings
 fn preferences_menu(speed: &mut u64, chunk_size: &mut usize) {
     terminal::disable_raw_mode().unwrap();
     execute!(stdout(), terminal::Clear(ClearType::All)).unwrap();
@@ -74,7 +88,7 @@ fn preferences_menu(speed: &mut u64, chunk_size: &mut usize) {
                 input.clear();
                 std::io::stdin().read_line(&mut input).unwrap();
                 if let Ok(new_chunk_size) = input.trim().parse::<usize>() {
-                    *chunk_size = new_chunk_size;
+                    *chunk_size = new_chunk_size.max(1).min(9); // Limit chunk size to 1-9
                     println!("Chunk size updated to {} words.", new_chunk_size);
                 } else {
                     println!("Invalid input. Chunk size remains unchanged.");
@@ -94,21 +108,7 @@ fn preferences_menu(speed: &mut u64, chunk_size: &mut usize) {
     terminal::enable_raw_mode().unwrap();
 }
 
-
-
-/// Prompt the user for input
-fn prompt_user(prompt: &str) -> String {
-    terminal::disable_raw_mode().unwrap();
-    execute!(stdout(), terminal::Clear(ClearType::All)).unwrap();
-    println!("{}", prompt);
-
-    let mut input = String::new();
-    std::io::stdin().read_line(&mut input).unwrap();
-
-    terminal::enable_raw_mode().unwrap();
-    input.trim().to_string()
-}
-
+/// Main program loop
 fn main() {
     let matches = Command::new("RSVP")
         .version("1.0")
@@ -133,7 +133,6 @@ fn main() {
 
     let input_file = matches.get_one::<String>("input").map(String::as_str).unwrap_or("default_help.txt");
 
-    // Load settings from file
     let (mut speed, mut chunk_size) = load_settings();
 
     if let Some(arg_speed) = matches.get_one::<String>("speed") {
@@ -188,7 +187,7 @@ fn main() {
 
         // Always display the bottom menu
         let menu_text = "[Up: +10] [Down: -10] [PgUp: +100] [PgDn: -100] [Space: Pause/Resume]";
-        let menu_text2 = "[C: Chunk Size] [S: Speed] [P: Preferences] [Q: Quit]";
+        let menu_text2 = "[C: Chunk Size (1-9)] [S: Speed] [P: Preferences] [Q: Quit]";
         let menu_text3 = format!("Current: Speed={} WPM | Chunk Size={} words", speed, chunk_size);
 
         execute!(stdout, MoveTo(0, rows - 5)).unwrap();
@@ -197,23 +196,6 @@ fn main() {
         print!("{:^width$}", menu_text2, width = cols as usize);
         execute!(stdout, MoveTo(0, rows - 3)).unwrap();
         print!("{:^width$}", menu_text3, width = cols as usize);
-
-        // Display progress bar
-        let progress_percentage = (index * 100 / words.len()) as u16;
-        let progress_bar_width = cols / 2; // 50% of the screen width
-        let left_margin = (cols - progress_bar_width) / 2; // 25% blank space on each side
-        let progress_filled = progress_percentage as usize * progress_bar_width as usize / 100;
-        let progress_bar = format!(
-            "[{}{}]",
-            "#".repeat(progress_filled),
-            "-".repeat((progress_bar_width as usize).saturating_sub(progress_filled))
-        );
-
-        execute!(stdout, MoveTo(left_margin, rows - 2)).unwrap();
-        print!("{}", progress_bar);
-
-        execute!(stdout, MoveTo(left_margin, rows - 1)).unwrap();
-        print!("Progress: {}%", progress_percentage);
 
         stdout.flush().unwrap();
 
@@ -227,13 +209,6 @@ fn main() {
                     KeyCode::Right => index = std::cmp::min(index + chunk_size, words.len() - 1),
                     KeyCode::Left => index = index.saturating_sub(chunk_size),
                     KeyCode::Char(' ') => paused = !paused,
-                    KeyCode::Char('c') => {
-                        let input = prompt_user("Enter new chunk size (number of words):");
-                        if let Ok(new_chunk) = input.parse::<usize>() {
-                            chunk_size = new_chunk.max(1);
-                            save_settings(speed, chunk_size);
-                        }
-                    }
                     KeyCode::Char('s') => {
                         let input = prompt_user("Enter new speed (WPM):");
                         if let Ok(new_speed) = input.parse::<u64>() {
@@ -242,6 +217,15 @@ fn main() {
                         }
                     }
                     KeyCode::Char('p') => preferences_menu(&mut speed, &mut chunk_size),
+                    KeyCode::Char('1') => chunk_size = 1,
+                    KeyCode::Char('2') => chunk_size = 2,
+                    KeyCode::Char('3') => chunk_size = 3,
+                    KeyCode::Char('4') => chunk_size = 4,
+                    KeyCode::Char('5') => chunk_size = 5,
+                    KeyCode::Char('6') => chunk_size = 6,
+                    KeyCode::Char('7') => chunk_size = 7,
+                    KeyCode::Char('8') => chunk_size = 8,
+                    KeyCode::Char('9') => chunk_size = 9,
                     KeyCode::Char('q') => break,
                     _ => {}
                 }
@@ -256,8 +240,6 @@ fn main() {
     execute!(stdout, cursor::Show).unwrap();
     terminal::disable_raw_mode().unwrap();
 
-    // Save settings on exit
     save_settings(speed, chunk_size);
-
     println!("Program terminated.");
 }
