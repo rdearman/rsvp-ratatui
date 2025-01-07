@@ -6,11 +6,9 @@ use crossterm::{
 };
 use std::io::{stdout, Write};
 use clap::{Command, Arg};
-use std::fs::{self, File};
+use std::fs::File;
 use std::io::{Read, Write as IoWrite};
-use std::path::PathBuf;
-use dirs_next::home_dir; // Use dirs-next crate for user's home directory
-
+use dirs_next::home_dir;
 
 /// Save the user's settings to a file in their home directory
 fn save_settings(speed: u64, chunk_size: usize) {
@@ -47,6 +45,58 @@ fn load_settings() -> (u64, usize) {
     (250, 1) // Default settings
 }
 
+fn preferences_menu(speed: &mut u64, chunk_size: &mut usize) {
+    terminal::disable_raw_mode().unwrap();
+    execute!(stdout(), terminal::Clear(ClearType::All)).unwrap();
+    println!("Preferences Menu:");
+    println!("1. Change Speed (current: {} WPM)", speed);
+    println!("2. Change Chunk Size (current: {} words)", chunk_size);
+    println!("3. Save Preferences");
+    println!("4. Exit Preferences");
+
+    loop {
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input).unwrap();
+        match input.trim() {
+            "1" => {
+                println!("Enter new speed (WPM):");
+                input.clear();
+                std::io::stdin().read_line(&mut input).unwrap();
+                if let Ok(new_speed) = input.trim().parse::<u64>() {
+                    *speed = new_speed;
+                    println!("Speed updated to {} WPM.", new_speed);
+                } else {
+                    println!("Invalid input. Speed remains unchanged.");
+                }
+            }
+            "2" => {
+                println!("Enter new chunk size (number of words):");
+                input.clear();
+                std::io::stdin().read_line(&mut input).unwrap();
+                if let Ok(new_chunk_size) = input.trim().parse::<usize>() {
+                    *chunk_size = new_chunk_size;
+                    println!("Chunk size updated to {} words.", new_chunk_size);
+                } else {
+                    println!("Invalid input. Chunk size remains unchanged.");
+                }
+            }
+            "3" => {
+                save_settings(*speed, *chunk_size);
+                println!("Preferences saved!");
+            }
+            "4" => {
+                println!("Exiting Preferences.");
+                break;
+            }
+            _ => println!("Invalid option. Please try again."),
+        }
+    }
+    terminal::enable_raw_mode().unwrap();
+}
+
+
+
+/// Prompt the user for input
 fn prompt_user(prompt: &str) -> String {
     terminal::disable_raw_mode().unwrap();
     execute!(stdout(), terminal::Clear(ClearType::All)).unwrap();
@@ -137,12 +187,33 @@ fn main() {
         print!("{}", speed_text);
 
         // Always display the bottom menu
-        let menu_text = "[Up: +10] [Down: -10] [PgUp: +100] [PgDn: -100] [Space: Pause/Resume] [Q: Quit]";
-        let menu_text2 = "[Load File: L] [Set Speed: S] [Skip Forward: Right] [Skip Back: Left] [Chunk Size: C]";
-        execute!(stdout, MoveTo(0, rows - 4)).unwrap();
+        let menu_text = "[Up: +10] [Down: -10] [PgUp: +100] [PgDn: -100] [Space: Pause/Resume]";
+        let menu_text2 = "[C: Chunk Size] [S: Speed] [P: Preferences] [Q: Quit]";
+        let menu_text3 = format!("Current: Speed={} WPM | Chunk Size={} words", speed, chunk_size);
+
+        execute!(stdout, MoveTo(0, rows - 5)).unwrap();
         print!("{:^width$}", menu_text, width = cols as usize);
-        execute!(stdout, MoveTo(0, rows - 3)).unwrap();
+        execute!(stdout, MoveTo(0, rows - 4)).unwrap();
         print!("{:^width$}", menu_text2, width = cols as usize);
+        execute!(stdout, MoveTo(0, rows - 3)).unwrap();
+        print!("{:^width$}", menu_text3, width = cols as usize);
+
+        // Display progress bar
+        let progress_percentage = (index * 100 / words.len()) as u16;
+        let progress_bar_width = cols / 2; // 50% of the screen width
+        let left_margin = (cols - progress_bar_width) / 2; // 25% blank space on each side
+        let progress_filled = progress_percentage as usize * progress_bar_width as usize / 100;
+        let progress_bar = format!(
+            "[{}{}]",
+            "#".repeat(progress_filled),
+            "-".repeat((progress_bar_width as usize).saturating_sub(progress_filled))
+        );
+
+        execute!(stdout, MoveTo(left_margin, rows - 2)).unwrap();
+        print!("{}", progress_bar);
+
+        execute!(stdout, MoveTo(left_margin, rows - 1)).unwrap();
+        print!("Progress: {}%", progress_percentage);
 
         stdout.flush().unwrap();
 
@@ -156,34 +227,21 @@ fn main() {
                     KeyCode::Right => index = std::cmp::min(index + chunk_size, words.len() - 1),
                     KeyCode::Left => index = index.saturating_sub(chunk_size),
                     KeyCode::Char(' ') => paused = !paused,
-                    KeyCode::Char('l') => {
-                        let file = prompt_user("Enter file path:");
-                        if let Ok(content) = std::fs::read_to_string(file) {
-                            words = content.split_whitespace().map(String::from).collect();
-                            index = 0;
-                            paused = false;
-                        } else {
-                            let _ = prompt_user("Failed to load file. Press Enter to continue.");
+                    KeyCode::Char('c') => {
+                        let input = prompt_user("Enter new chunk size (number of words):");
+                        if let Ok(new_chunk) = input.parse::<usize>() {
+                            chunk_size = new_chunk.max(1);
+                            save_settings(speed, chunk_size);
                         }
                     }
                     KeyCode::Char('s') => {
                         let input = prompt_user("Enter new speed (WPM):");
                         if let Ok(new_speed) = input.parse::<u64>() {
                             speed = new_speed;
-                            save_settings(speed, chunk_size); // Save settings
-                        } else {
-                            let _ = prompt_user("Invalid speed. Press Enter to continue.");
+                            save_settings(speed, chunk_size);
                         }
                     }
-                    KeyCode::Char('c') => {
-                        let input = prompt_user("Enter chunk size (number of words):");
-                        if let Ok(new_chunk) = input.parse::<usize>() {
-                            chunk_size = std::cmp::max(1, new_chunk);
-                            save_settings(speed, chunk_size); // Save settings
-                        } else {
-                            let _ = prompt_user("Invalid chunk size. Press Enter to continue.");
-                        }
-                    }
+                    KeyCode::Char('p') => preferences_menu(&mut speed, &mut chunk_size),
                     KeyCode::Char('q') => break,
                     _ => {}
                 }
