@@ -1,23 +1,15 @@
-# Use the official Rust image as the base
-FROM rust:latest
+FROM rust:1.65 as builder
 
-# Set the working directory
 WORKDIR /app
 
-# Copy Cargo files first to leverage Docker caching
-COPY Cargo.toml Cargo.lock ./
+COPY . .
 
-# Create an empty src directory to run `cargo fetch`
-RUN mkdir src
-
-# Fetch dependencies
-RUN cargo fetch
-
-# Copy the rest of the application source code
-COPY src ./src
-
-# Build the application
 RUN cargo build --release
 
-# Define the command to run the app
-CMD ["./target/release/my-leptos-app"]
+FROM debian:bullseye-slim
+
+COPY --from=builder /app/target/release/your-leptos-app /usr/local/bin/
+
+CMD ["your-leptos-app"]
+
+EXPOSE 3000

@@ -1,10 +1,13 @@
 [package]
 name = "my-rsvp-app"
-version = "0.1.0"
-edition = "2021"
+version = "0.0.1"
+edition = "2024"
 
 [dependencies]
-# Add your dependencies here
+leptos = "0.3"    # or whatever the latest version is
+tokio = { version = "1", features = ["full"] }
+web-sys = { version = "0.3", features = ["FileReader", "File", "HtmlInputElement"] }
+wasm-bindgen="*"
 
 [[bin]]
 name = "my-leptos-app"
