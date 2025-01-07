@@ -6,6 +6,46 @@ use crossterm::{
 };
 use std::io::{stdout, Write};
 use clap::{Command, Arg};
+use std::fs::{self, File};
+use std::io::{Read, Write as IoWrite};
+use std::path::PathBuf;
+use dirs_next::home_dir; // Use dirs-next crate for user's home directory
+
+
+/// Save the user's settings to a file in their home directory
+fn save_settings(speed: u64, chunk_size: usize) {
+    if let Some(home) = home_dir() {
+        let settings_path = home.join(".rsvp_settings");
+        let mut file = File::create(settings_path).expect("Failed to save settings.");
+        writeln!(file, "speed={}", speed).unwrap();
+        writeln!(file, "chunk_size={}", chunk_size).unwrap();
+    }
+}
+
+/// Load settings from the user's home directory
+fn load_settings() -> (u64, usize) {
+    if let Some(home) = home_dir() {
+        let settings_path = home.join(".rsvp_settings");
+        if settings_path.exists() {
+            let mut file = File::open(settings_path).expect("Failed to open settings file.");
+            let mut contents = String::new();
+            file.read_to_string(&mut contents).unwrap();
+
+            let mut speed = 250;
+            let mut chunk_size = 1;
+
+            for line in contents.lines() {
+                if line.starts_with("speed=") {
+                    speed = line[6..].parse().unwrap_or(250);
+                } else if line.starts_with("chunk_size=") {
+                    chunk_size = line[11..].parse().unwrap_or(1);
+                }
+            }
+            return (speed, chunk_size);
+        }
+    }
+    (250, 1) // Default settings
+}
 
 fn prompt_user(prompt: &str) -> String {
     terminal::disable_raw_mode().unwrap();
@@ -42,11 +82,13 @@ fn main() {
         .get_matches();
 
     let input_file = matches.get_one::<String>("input").map(String::as_str).unwrap_or("default_help.txt");
-    let mut speed: u64 = matches
-        .get_one::<String>("speed")
-        .unwrap()
-        .parse()
-        .expect("Speed must be a number");
+
+    // Load settings from file
+    let (mut speed, mut chunk_size) = load_settings();
+
+    if let Some(arg_speed) = matches.get_one::<String>("speed") {
+        speed = arg_speed.parse().expect("Speed must be a number");
+    }
 
     let mut words = if input_file == "default_help.txt" {
         vec![
@@ -71,7 +113,6 @@ fn main() {
 
     let mut index = 0;
     let mut paused = false;
-    let mut chunk_size = 1;
 
     loop {
         if index >= words.len() {
@@ -103,23 +144,6 @@ fn main() {
         execute!(stdout, MoveTo(0, rows - 3)).unwrap();
         print!("{:^width$}", menu_text2, width = cols as usize);
 
-        // Calculate and display the progress bar
-        let progress_percentage = (index * 100 / words.len()) as u16;
-        let progress_bar_width = cols / 2; // 50% of the screen width
-        let left_margin = (cols - progress_bar_width) / 2; // 25% blank space on each side
-        let progress_filled = progress_percentage as usize * progress_bar_width as usize / 100;
-        let progress_bar = format!(
-            "[{}{}]",
-            "#".repeat(progress_filled),
-            "-".repeat((progress_bar_width as usize).saturating_sub(progress_filled))
-        );
-
-        execute!(stdout, MoveTo(left_margin, rows - 2)).unwrap();
-        print!("{}", progress_bar);
-
-        execute!(stdout, MoveTo(left_margin, rows - 1)).unwrap();
-        print!("Progress: {}%", progress_percentage);
-
         stdout.flush().unwrap();
 
         if event::poll(std::time::Duration::from_millis(60000 / speed)).unwrap() {
@@ -146,6 +170,7 @@ fn main() {
                         let input = prompt_user("Enter new speed (WPM):");
                         if let Ok(new_speed) = input.parse::<u64>() {
                             speed = new_speed;
+                            save_settings(speed, chunk_size); // Save settings
                         } else {
                             let _ = prompt_user("Invalid speed. Press Enter to continue.");
                         }
@@ -154,6 +179,7 @@ fn main() {
                         let input = prompt_user("Enter chunk size (number of words):");
                         if let Ok(new_chunk) = input.parse::<usize>() {
                             chunk_size = std::cmp::max(1, new_chunk);
+                            save_settings(speed, chunk_size); // Save settings
                         } else {
                             let _ = prompt_user("Invalid chunk size. Press Enter to continue.");
                         }
@@ -171,5 +197,9 @@ fn main() {
 
     execute!(stdout, cursor::Show).unwrap();
     terminal::disable_raw_mode().unwrap();
+
+    // Save settings on exit
+    save_settings(speed, chunk_size);
+
     println!("Program terminated.");
 }
