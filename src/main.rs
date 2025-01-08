@@ -10,6 +10,20 @@ use std::fs::File;
 use std::io::{Read, Write as IoWrite};
 use dirs_next::home_dir;
 
+fn prompt_user(prompt: &str) -> String {
+    // Disable raw mode to handle user input
+    terminal::disable_raw_mode().unwrap();
+    execute!(stdout(), terminal::Clear(ClearType::All)).unwrap();
+    println!("{}", prompt);
+
+    let mut input = String::new();
+    std::io::stdin().read_line(&mut input).unwrap();
+
+    // Re-enable raw mode after input
+    terminal::enable_raw_mode().unwrap();
+    input.trim().to_string()
+}
+
 /// Save the user's settings to a file in their home directory
 fn save_settings(speed: u64, chunk_size: usize) {
     if let Some(home) = home_dir() {
@@ -96,7 +110,7 @@ fn main() {
 
     // Get the input file or default to help text
     let input_file = matches.get_one::<String>("input").map(String::as_str).unwrap_or("default_help.txt");
-    let words = if input_file == "default_help.txt" {
+    let mut words = if input_file == "default_help.txt" {
         vec![
             "Welcome to RSVP!".to_string(),
             "This program displays one word at a time in the terminal.".to_string(),
@@ -160,7 +174,7 @@ fn main() {
 
         // Display the menu at the bottom of the screen, centered
         let menu_text = "Up/Down: Adjust Speed | PgUp/PgDn: Adjust Speed by 100 | Space: Pause/Resume | Q: Quit";
-        let menu_text2 = "1-9: Set Chunk Size";
+        let menu_text2 = "1-9: Set Chunk Size | L: Load File | P: Set Preferences| Left: Skip Back | Right: Skip Forward";
         let menu_text3 = format!("Current: Speed={} WPM | Chunk Size={} words", speed, chunk_size);
 
         execute!(stdout, MoveTo(0, rows - 5)).unwrap();
@@ -181,6 +195,21 @@ fn main() {
                     KeyCode::PageDown => if speed > 100 { speed -= 100 },
                     KeyCode::Right => index = std::cmp::min(index + chunk_size, words.len() - 1),
                     KeyCode::Left => index = index.saturating_sub(chunk_size),
+                    KeyCode::Char('l') => {
+                        // Prompt for file and load words
+                        let file = prompt_user("Enter file path:");
+                        if let Ok(content) = std::fs::read_to_string(file) {
+                            words = content.split_whitespace().map(String::from).collect();
+                            index = 0;
+                            paused = false; // Reset paused state
+                        } else {
+                            let _ = prompt_user("Failed to load file. Press Enter to continue.");
+                        }
+                    }
+                    KeyCode::Char('p') => {
+                        // Prompt for preferences
+
+                    }
                     KeyCode::Char(' ') => paused = !paused,
                     KeyCode::Char('q') => break,
                     KeyCode::Char(c) if c.is_digit(10) => {
