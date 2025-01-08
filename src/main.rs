@@ -1,6 +1,6 @@
 use crossterm::{
     execute,
-    terminal::{self, ClearType},
+    terminal::{self,Clear, ClearType},
     cursor::{self, MoveTo},
     event::{self, Event, KeyCode, KeyEvent},
 };
@@ -11,9 +11,6 @@ use std::io::{Read, Write as IoWrite};
 use dirs_next::home_dir;
 
 fn prompt_user(prompt: &str) -> String {
-    // Disable raw mode to handle user input
-    terminal::disable_raw_mode().unwrap();
-    execute!(stdout(), terminal::Clear(ClearType::All)).unwrap();
     println!("{}", prompt);
 
     let mut input = String::new();
@@ -23,6 +20,72 @@ fn prompt_user(prompt: &str) -> String {
     terminal::enable_raw_mode().unwrap();
     input.trim().to_string()
 }
+
+fn set_preferences(mut speed: u64, mut chunk_size: usize) {
+    loop {
+        terminal::disable_raw_mode().unwrap();
+
+        // Create a mutable handle to stdout
+        let mut out = stdout();
+
+        // Clear the terminal and reset cursor
+        execute!(out, Clear(ClearType::All), MoveTo(0, 0)).unwrap();
+
+        // Display the options to the user
+        println!("Set Preferences:");
+        println!("1. Set Speed");
+        println!("2. Set Chunk Size");
+        println!("3. Save Preferences");
+        println!("4. Cancel");
+
+        // Flush the output to ensure it's displayed
+        out.flush().unwrap();
+
+        // Prompt the user for a choice
+        let choice = prompt_user("Enter your choice (1-4):");
+        terminal::enable_raw_mode().unwrap();
+
+        match choice.as_str() {
+            "1" => {
+                terminal::disable_raw_mode().unwrap();
+                let mut out = stdout();
+                execute!(out, Clear(ClearType::All)).unwrap();
+                let speed_input = prompt_user("Enter the new speed (in words per minute):");
+                if let Ok(new_speed) = speed_input.parse::<u64>() {
+                    speed = new_speed;
+                    println!("Speed updated to {} wpm.", speed);
+                } else {
+                    println!("Invalid speed value. Please try again.");
+                }
+            }
+            "2" => {
+                terminal::disable_raw_mode().unwrap();
+                let mut out = stdout();
+                execute!(out, Clear(ClearType::All)).unwrap();
+                let chunk_input = prompt_user("Enter the new chunk size (number of words):");
+                if let Ok(new_chunk_size) = chunk_input.parse::<usize>() {
+                    chunk_size = new_chunk_size;
+                    println!("Chunk size updated to {} words.", chunk_size);
+                } else {
+                    println!("Invalid chunk size value. Please try again.");
+                }
+            }
+            "3" => {
+                save_settings(speed, chunk_size);
+                println!("Preferences saved successfully!");
+                break;
+            }
+            "4" => {
+                println!("Preferences update cancelled.");
+                break;
+            }
+            _ => {
+                println!("Invalid choice. Please enter a number between 1 and 4.");
+            }
+        }
+    }
+}
+
 
 /// Save the user's settings to a file in their home directory
 fn save_settings(speed: u64, chunk_size: usize) {
@@ -127,9 +190,9 @@ fn main() {
     };
 
     // Enable terminal raw mode and prepare for output
-    let mut stdout = stdout();
+    let mut out = stdout();
     terminal::enable_raw_mode().unwrap();
-    execute!(stdout, cursor::Hide).unwrap();
+    execute!(out, cursor::Hide).unwrap();
 
     let (cols, rows) = terminal::size().unwrap();
     let mut index = 0;
@@ -141,7 +204,7 @@ fn main() {
         }
 
         // Clear the screen and draw content
-        execute!(stdout, terminal::Clear(ClearType::All)).unwrap();
+        execute!(out, terminal::Clear(ClearType::All)).unwrap();
 
         // Display the current word(s)
         let chunk = words[index..std::cmp::min(index + chunk_size, words.len())]
@@ -149,7 +212,7 @@ fn main() {
         let x = (cols / 2) - (chunk.len() as u16 / 2);
         let y = rows / 2;
 
-        execute!(stdout, MoveTo(x, y)).unwrap();
+        execute!(out, MoveTo(x, y)).unwrap();
         print!("{}", chunk);
 
         // Display the progress bar
@@ -164,12 +227,12 @@ fn main() {
         );
 
         let progress_bar_x = cols / 4; // Centered with 25% padding on each side
-        execute!(stdout, MoveTo(progress_bar_x, rows - 2)).unwrap();
+        execute!(out, MoveTo(progress_bar_x, rows - 2)).unwrap();
         print!("{}", progress_bar);
 
         let progress_percentage_text = format!("{:.2}%", progress_percentage);
         let progress_percentage_x = (cols / 2) - (progress_percentage_text.len() as u16 / 2);
-        execute!(stdout, MoveTo(progress_percentage_x, rows - 1)).unwrap();
+        execute!(out, MoveTo(progress_percentage_x, rows - 1)).unwrap();
         print!("{}", progress_percentage_text);
 
         // Display the menu at the bottom of the screen, centered
@@ -177,14 +240,14 @@ fn main() {
         let menu_text2 = "1-9: Set Chunk Size | L: Load File | P: Set Preferences| Left: Skip Back | Right: Skip Forward";
         let menu_text3 = format!("Current: Speed={} WPM | Chunk Size={} words", speed, chunk_size);
 
-        execute!(stdout, MoveTo(0, rows - 5)).unwrap();
+        execute!(out, MoveTo(0, rows - 5)).unwrap();
         print!("{:^width$}\n", menu_text, width = cols as usize);
-        execute!(stdout, MoveTo(0, rows - 4)).unwrap();
+        execute!(out, MoveTo(0, rows - 4)).unwrap();
         print!("{:^width$}\n", menu_text2, width = cols as usize);
-        execute!(stdout, MoveTo(0, rows - 3)).unwrap();
+        execute!(out, MoveTo(0, rows - 3)).unwrap();
         print!("{:^width$}\n", menu_text3, width = cols as usize);
 
-        stdout.flush().unwrap();
+        out.flush().unwrap();
 
         if event::poll(std::time::Duration::from_millis(60000 / speed)).unwrap() {
             if let Event::Key(KeyEvent { code, .. }) = event::read().unwrap() {
@@ -197,6 +260,10 @@ fn main() {
                     KeyCode::Left => index = index.saturating_sub(chunk_size),
                     KeyCode::Char('l') => {
                         // Prompt for file and load words
+                        // Disable raw mode to handle user input
+                        terminal::disable_raw_mode().unwrap();
+                        execute!(out, terminal::Clear(ClearType::All)).unwrap();
+
                         let file = prompt_user("Enter file path:");
                         if let Ok(content) = std::fs::read_to_string(file) {
                             words = content.split_whitespace().map(String::from).collect();
@@ -207,8 +274,8 @@ fn main() {
                         }
                     }
                     KeyCode::Char('p') => {
-                        // Prompt for preferences
-
+                        // Assume `speed` and `chunk_size` are variables already defined in the current scope
+                        set_preferences(speed, chunk_size);
                     }
                     KeyCode::Char(' ') => paused = !paused,
                     KeyCode::Char('q') => break,
@@ -225,7 +292,7 @@ fn main() {
         }
     }
 
-    execute!(stdout, cursor::Show).unwrap();
+    execute!(out, cursor::Show).unwrap();
     terminal::disable_raw_mode().unwrap();
 
     println!("Program terminated.");
