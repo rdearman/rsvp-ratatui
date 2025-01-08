@@ -10,6 +10,19 @@ use std::fs::File;
 use std::io::{Read, Write as IoWrite};
 use dirs_next::home_dir;
 
+fn reset_terminal_state() {
+    // Disable raw mode to ensure terminal is in canonical mode
+    if let Err(err) = terminal::disable_raw_mode() {
+        eprintln!("Error disabling raw mode: {}", err);
+    }
+
+    // Flush stdout to ensure no buffered output interferes
+    if let Err(err) = stdout().flush() {
+        eprintln!("Error flushing stdout: {}", err);
+    }
+}
+
+
 fn prompt_user(prompt: &str) -> String {
     println!("{}", prompt);
 
@@ -21,7 +34,66 @@ fn prompt_user(prompt: &str) -> String {
     input.trim().to_string()
 }
 
-fn set_preferences(mut speed: u64, mut chunk_size: usize) {
+
+fn load_words_from_file() -> Vec<String> {
+    loop {
+        //println!("Debug: Entering load_words_from_file loop.");
+
+        // Reset terminal state before taking input
+        reset_terminal_state();
+
+        println!("Enter file path:");
+        let mut file_path = String::new();
+
+        match std::io::stdin().read_line(&mut file_path) {
+            Ok(_) => {
+                file_path = file_path.trim().to_string();
+                // println!("Debug: File path entered: {}", file_path);
+
+                match std::fs::read_to_string(&file_path) {
+                    Ok(content) => {
+                        //println!("Debug: File loaded successfully.");
+                        let words = content.split_whitespace().map(String::from).collect();
+                        println!("File loaded successfully!");
+                        return words;
+                    }
+                    Err(err) => {
+                        println!("Debug: Failed to load file: {}.", err);
+
+                        // Reset terminal state before retry prompt
+                        reset_terminal_state();
+
+                        println!("Retry? (y/n):");
+                        let mut retry = String::new();
+                        match std::io::stdin().read_line(&mut retry) {
+                            Ok(_) => {
+                                let retry = retry.trim().to_lowercase();
+                                //println!("Debug: Retry response: {}", retry);
+
+                                if retry != "y" {
+                                    println!("Returning to the main menu.");
+                                    return vec![];
+                                }
+                            }
+                            Err(e) => {
+                                println!("Debug: Failed to capture retry response: {}", e);
+                                return vec![];
+                            }
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                println!("Debug: Failed to read file path: {}", e);
+                return vec![];
+            }
+        }
+    }
+}
+
+
+
+fn set_preferences(mut speed: u64, mut chunk_size: usize) -> (u64, usize) {
     loop {
         terminal::disable_raw_mode().unwrap();
 
@@ -48,7 +120,6 @@ fn set_preferences(mut speed: u64, mut chunk_size: usize) {
         match choice.as_str() {
             "1" => {
                 terminal::disable_raw_mode().unwrap();
-                let mut out = stdout();
                 execute!(out, Clear(ClearType::All)).unwrap();
                 let speed_input = prompt_user("Enter the new speed (in words per minute):");
                 if let Ok(new_speed) = speed_input.parse::<u64>() {
@@ -60,7 +131,6 @@ fn set_preferences(mut speed: u64, mut chunk_size: usize) {
             }
             "2" => {
                 terminal::disable_raw_mode().unwrap();
-                let mut out = stdout();
                 execute!(out, Clear(ClearType::All)).unwrap();
                 let chunk_input = prompt_user("Enter the new chunk size (number of words):");
                 if let Ok(new_chunk_size) = chunk_input.parse::<usize>() {
@@ -84,6 +154,9 @@ fn set_preferences(mut speed: u64, mut chunk_size: usize) {
             }
         }
     }
+
+    // Return the updated values
+    (speed, chunk_size)
 }
 
 
@@ -259,24 +332,31 @@ fn main() {
                     KeyCode::Right => index = std::cmp::min(index + chunk_size, words.len() - 1),
                     KeyCode::Left => index = index.saturating_sub(chunk_size),
                     KeyCode::Char('l') => {
-                        // Prompt for file and load words
-                        // Disable raw mode to handle user input
-                        terminal::disable_raw_mode().unwrap();
-                        execute!(out, terminal::Clear(ClearType::All)).unwrap();
+                        // Load words from the new file
+                        let loaded_words = load_words_from_file();
 
-                        let file = prompt_user("Enter file path:");
-                        if let Ok(content) = std::fs::read_to_string(file) {
-                            words = content.split_whitespace().map(String::from).collect();
+                        if !loaded_words.is_empty() {
+                            // Update words only if loading was successful
+                            words = loaded_words;
                             index = 0;
                             paused = false; // Reset paused state
-                        } else {
-                            let _ = prompt_user("Failed to load file. Press Enter to continue.");
                         }
                     }
                     KeyCode::Char('p') => {
                         // Assume `speed` and `chunk_size` are variables already defined in the current scope
-                        set_preferences(speed, chunk_size);
+                        let (new_speed, new_chunk_size) = set_preferences(speed, chunk_size);
+                        speed = new_speed;
+                        chunk_size = new_chunk_size;
+
+                        // Reload saved preferences
+                        let (saved_speed, saved_chunk_size) = load_settings();
+
+                        // Handle Option values by providing defaults or handling None
+                        let saved_speed = saved_speed.unwrap_or(0); // Default to 0 wpm if None
+                        let saved_chunk_size = saved_chunk_size.unwrap_or(0); // Default to 0 words if None
+
                     }
+
                     KeyCode::Char(' ') => paused = !paused,
                     KeyCode::Char('q') => break,
                     KeyCode::Char(c) if c.is_digit(10) => {
