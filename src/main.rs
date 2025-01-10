@@ -1,5 +1,8 @@
 mod interface;
 mod utilities;
+use clap::{Arg, Command};
+use crate::utilities::{load_settings, save_settings};
+
 
 fn main() {
     // Load saved preferences
@@ -51,22 +54,26 @@ fn main() {
 
     // Get the input file or default to help text
     let input_file = matches.get_one::<String>("input").map(String::as_str).unwrap_or("default_help.txt");
-    let mut words = if input_file == "default_help.txt" {
-        vec![
-            "Welcome to RSVP!".to_string(),
-            "This program displays one word at a time in the terminal.".to_string(),
-            "Use the up and down arrows to adjust speed.".to_string(),
-            "Press space to pause or resume.".to_string(),
-            "Press 'q' to quit.".to_string(),
-        ]
-    } else {
-        std::fs::read_to_string(input_file)
-            .expect("Failed to read input file")
-            .split_whitespace()
-            .map(String::from)
-            .collect::<Vec<_>>()
-    };		
-		
-    // Launch the UI
-    interface::run_ui(speed, chunk_size, total_words);
+
+	let words = if input_file == "default_help.txt" {
+		vec![
+			"Welcome to RSVP!".to_string(),
+			"This program displays one word at a time in the terminal.".to_string(),
+			"Use the up and down arrows to adjust speed.".to_string(),
+			"Press space to pause or resume.".to_string(),
+			"Press 'q' to quit.".to_string(),
+		]
+	} else {
+		std::fs::read_to_string(input_file)
+			.expect("Failed to read input file")
+			.split_whitespace()
+			.map(String::from)
+			.collect::<Vec<_>>()
+	};
+
+	let total_words = words.len();
+
+	// Pass words to the UI
+	interface::run_ui(speed, chunk_size, total_words, words);
+
 }

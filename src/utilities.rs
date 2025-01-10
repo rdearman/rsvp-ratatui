@@ -1,19 +1,83 @@
-use std::fs::{self, File};
-use std::io::Write;
+use std::io::{self, stdout};
 use dirs_next::home_dir;
+use std::fs::{self, File};
+use std::io::{Read, Write}; // Ensure Write is included
 
-/// Save the user's settings to a file in their home directory
-fn save_settings(speed: u64, chunk_size: usize) {
+use ratatui::{
+    backend::CrosstermBackend,
+    layout::{Constraint, Direction, Layout},
+    widgets::{Block, Borders, Paragraph},
+    Terminal,
+};
+use crossterm::{event::{self, KeyCode, KeyEvent}, terminal};
+
+pub fn save_settings(speed: u64, chunk_size: usize) {
     if let Some(home) = home_dir() {
         let settings_path = home.join(".rsvp_settings");
         let mut file = File::create(settings_path).expect("Failed to save settings.");
-        writeln!(file, "speed={}", speed).unwrap();
+        writeln!(file, "speed={}", speed).unwrap(); // Ensure Write is in scope
         writeln!(file, "chunk_size={}", chunk_size).unwrap();
     }
 }
 
+
+pub fn load_words_from_file_ui() -> Vec<String> {
+    let mut file_path = String::new();
+    let mut terminal = {
+        terminal::enable_raw_mode().unwrap();
+        let backend = CrosstermBackend::new(stdout());
+        Terminal::new(backend).unwrap()
+    };
+
+    loop {
+        terminal.draw(|f| {
+            let size = f.size();
+
+            // Main layout
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Percentage(20), // Top spacer
+                    Constraint::Percentage(60), // Form block
+                    Constraint::Percentage(20), // Bottom spacer
+                ])
+                .split(size);
+
+            // Input form
+            let input_block = Paragraph::new(file_path.clone())
+                .block(Block::default().borders(Borders::ALL).title("Enter File Path"));
+            f.render_widget(input_block, chunks[1]);
+        }).unwrap();
+
+        if let Ok(event::Event::Key(KeyEvent { code, .. })) = event::read() {
+            match code {
+                KeyCode::Enter => {
+                    if let Ok(content) = std::fs::read_to_string(&file_path) {
+                        terminal::disable_raw_mode().unwrap();
+                        return content.split_whitespace().map(String::from).collect();
+                    } else {
+                        file_path.clear();
+                    }
+                }
+                KeyCode::Backspace => {
+                    file_path.pop();
+                }
+                KeyCode::Char(c) => {
+                    file_path.push(c);
+                }
+                KeyCode::Esc => {
+                    terminal::disable_raw_mode().unwrap();
+                    return vec![];
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+
 /// Load settings from the user's home directory
-fn load_settings() -> (Option<u64>, Option<usize>) {
+pub fn load_settings() -> (Option<u64>, Option<usize>) {
     if let Some(home) = home_dir() {
         let settings_path = home.join(".rsvp_settings");
         if settings_path.exists() {
@@ -36,60 +100,4 @@ fn load_settings() -> (Option<u64>, Option<usize>) {
         }
     }
     (None, None)
-}
-
-fn load_words_from_file() -> Vec<String> {
-    loop {
-        //println!("Debug: Entering load_words_from_file loop.");
-
-        // Reset terminal state before taking input
-        reset_terminal_state();
-
-        println!("Enter file path:");
-        let mut file_path = String::new();
-
-        match std::io::stdin().read_line(&mut file_path) {
-            Ok(_) => {
-                file_path = file_path.trim().to_string();
-                // println!("Debug: File path entered: {}", file_path);
-
-                match std::fs::read_to_string(&file_path) {
-                    Ok(content) => {
-                        //println!("Debug: File loaded successfully.");
-                        let words = content.split_whitespace().map(String::from).collect();
-                        println!("File loaded successfully!");
-                        return words;
-                    }
-                    Err(err) => {
-                        println!("Debug: Failed to load file: {}.", err);
-
-                        // Reset terminal state before retry prompt
-                        reset_terminal_state();
-
-                        println!("Retry? (y/n):");
-                        let mut retry = String::new();
-                        match std::io::stdin().read_line(&mut retry) {
-                            Ok(_) => {
-                                let retry = retry.trim().to_lowercase();
-                                //println!("Debug: Retry response: {}", retry);
-
-                                if retry != "y" {
-                                    println!("Returning to the main menu.");
-                                    return vec![];
-                                }
-                            }
-                            Err(e) => {
-                                println!("Debug: Failed to capture retry response: {}", e);
-                                return vec![];
-                            }
-                        }
-                    }
-                }
-            }
-            Err(e) => {
-                println!("Debug: Failed to read file path: {}", e);
-                return vec![];
-            }
-        }
-    }
 }
