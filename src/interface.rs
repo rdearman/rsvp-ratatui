@@ -33,19 +33,19 @@ pub fn run_ui(mut speed: u64, mut chunk_size: usize, total_words: usize, words: 
     let mut reading_time = 0.0;
 
     loop {
-        // Check for events immediately
+        // Event handling and input
         if event::poll(Duration::from_millis(10)).unwrap() {
             if let Event::Key(KeyEvent { code, .. }) = event::read().unwrap() {
                 match code {
-                    KeyCode::Char(' ') => {
-                        paused = !paused; // Toggle pause
-                        last_update = Instant::now(); // Reset timer to avoid skipping
-                    }
+                    KeyCode::Char(' ') => { paused = !paused;  }// Toggle pause 
                     KeyCode::Up => speed += 10,
                     KeyCode::Down => speed = speed.saturating_sub(10),
                     KeyCode::PageUp => speed += 100,
                     KeyCode::PageDown => speed = speed.saturating_sub(100),
                     KeyCode::Char('q') => break, // Quit the program
+					KeyCode::Char('p') => break, // Quit the program
+					KeyCode::Char('l') => {} //load_words_from_file_ui();} // Quit the program
+					KeyCode::Char('b') => break, // Quit the program
                     KeyCode::Right => current_word_index = (current_word_index + chunk_size).min(words.len()),
                     KeyCode::Left => current_word_index = current_word_index.saturating_sub(chunk_size),
                     KeyCode::Char(c) if c.is_digit(10) => {
@@ -58,7 +58,7 @@ pub fn run_ui(mut speed: u64, mut chunk_size: usize, total_words: usize, words: 
             }
         }
 
-        // Handle word progression if not paused and delay has elapsed
+        // Word progression when not paused
         if !paused && last_update.elapsed() >= word_delay {
             last_update = Instant::now(); // Reset the timer
             if current_word_index < words.len() {
@@ -69,7 +69,12 @@ pub fn run_ui(mut speed: u64, mut chunk_size: usize, total_words: usize, words: 
                 break; // End of words
             }
         }
+		else
+		{
+			//stop the words!
+		}
 
+        // Drawing the UI
         terminal.draw(|f| {
             let word_display = if current_word_index < words.len() {
                 words[current_word_index..current_word_index + chunk_size.min(words.len() - current_word_index)]
@@ -93,7 +98,7 @@ pub fn run_ui(mut speed: u64, mut chunk_size: usize, total_words: usize, words: 
                 .split(size);
 
             // Quick Keys Block
-            let quick_keys_text = "[Q]uit | [Space] pause/resume | [L]oad File | [P]references | [↑] +10 | [↓] -10 | [PgUp] +100 | [PgDn] -100 | [1-9] chunk size | [←] skip back 5 | [→] skip forward 5";
+            let quick_keys_text = "[Q]uit | [Space] pause/resume | [L]oad File | [P]references | [B]ookmark | [↑] +10 | [↓] -10 | [PgUp] +100 | [PgDn] -100 | [1-9] chunk size | [←] skip back 5 | [→] skip forward 5";
             let quick_keys = Paragraph::new(quick_keys_text)
                 .block(Block::default().borders(Borders::ALL).title("Quick Keys"));
             f.render_widget(quick_keys, chunks[0]);
