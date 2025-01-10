@@ -1,7 +1,8 @@
-
 # RSVP (Rapid Serial Visual Presentation)
 
 RSVP is a terminal-based application that displays text one word at a time, helping users practice speed reading and improve reading efficiency. Users can adjust the reading speed, chunk size (number of words displayed at once), and navigate through text with intuitive controls.
+
+This version of RSVP is a fork of the original application and has been updated to use the Ratatui crate instead of Crossterm. This change enables better display capabilities and more options for customization, making the application more versatile and visually appealing.
 
 ## Features
 
@@ -16,8 +17,8 @@ RSVP is a terminal-based application that displays text one word at a time, help
 
 1. **Clone the Repository**:
    ```bash
-   git clone https://github.com/yourusername/rsvp.git
-   cd rsvp
+   git clone https://github.com/rdearman/rsvp-ratatui.git
+   cd rsvp-ratatui
    ```
 
 2. **Build the Project**:
@@ -80,5 +81,5 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 
 ## Acknowledgments
 
-- Built with [Rust](https://www.rust-lang.org/) and the [crossterm](https://crates.io/crates/crossterm) library.
+- Built with [Rust](https://www.rust-lang.org/) and the [ratatui](https://crates.io/crates/ratatui) library.
 - Inspired by traditional RSVP reading applications.
