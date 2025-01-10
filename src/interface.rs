@@ -17,13 +17,11 @@ use std::time::{Duration, Instant};
 
 
 
-
 pub fn run_ui(mut speed: u64, mut chunk_size: usize, total_words: usize, words: Vec<String>) {
     let mut current_word_index = 0;
     let mut paused = false; // Track if the display is paused
     let mut word_delay = Duration::from_millis(60000 / speed); // Delay between words
     let mut last_update = Instant::now();
-    let mut last_event_time = Instant::now(); // Track last event to debounce input
 
     terminal::enable_raw_mode().unwrap();
     let mut stdout = stdout();
@@ -35,6 +33,31 @@ pub fn run_ui(mut speed: u64, mut chunk_size: usize, total_words: usize, words: 
     let mut reading_time = 0.0;
 
     loop {
+        // Check for events immediately
+        if event::poll(Duration::from_millis(10)).unwrap() {
+            if let Event::Key(KeyEvent { code, .. }) = event::read().unwrap() {
+                match code {
+                    KeyCode::Char(' ') => {
+                        paused = !paused; // Toggle pause
+                        last_update = Instant::now(); // Reset timer to avoid skipping
+                    }
+                    KeyCode::Up => speed += 10,
+                    KeyCode::Down => speed = speed.saturating_sub(10),
+                    KeyCode::PageUp => speed += 100,
+                    KeyCode::PageDown => speed = speed.saturating_sub(100),
+                    KeyCode::Char('q') => break, // Quit the program
+                    KeyCode::Right => current_word_index = (current_word_index + chunk_size).min(words.len()),
+                    KeyCode::Left => current_word_index = current_word_index.saturating_sub(chunk_size),
+                    KeyCode::Char(c) if c.is_digit(10) => {
+                        chunk_size = c.to_digit(10).unwrap() as usize;
+                    }
+                    _ => {}
+                }
+                // Recalculate delay if speed changes
+                word_delay = Duration::from_millis(60000 / speed);
+            }
+        }
+
         // Handle word progression if not paused and delay has elapsed
         if !paused && last_update.elapsed() >= word_delay {
             last_update = Instant::now(); // Reset the timer
@@ -134,33 +157,6 @@ pub fn run_ui(mut speed: u64, mut chunk_size: usize, total_words: usize, words: 
                 .ratio(progress_percentage / 100.0);
             f.render_widget(progress, stats_progress_chunks[1]);
         }).unwrap();
-
-        // Event handling
-        if event::poll(Duration::from_millis(50)).unwrap() {
-            if let Event::Key(KeyEvent { code, .. }) = event::read().unwrap() {
-                if last_event_time.elapsed() >= Duration::from_millis(100) {
-                    match code {
-                        KeyCode::Char(' ') => {
-                            paused = !paused; // Toggle pause
-                            last_update = Instant::now(); // Reset timer to avoid skipping
-                        }
-                        KeyCode::Up => speed += 10,
-                        KeyCode::Down => speed = speed.saturating_sub(10),
-                        KeyCode::PageUp => speed += 100,
-                        KeyCode::PageDown => speed = speed.saturating_sub(100),
-                        KeyCode::Char('q') => break, // Quit the program
-                        KeyCode::Right => current_word_index = (current_word_index + chunk_size).min(words.len()),
-                        KeyCode::Left => current_word_index = current_word_index.saturating_sub(chunk_size),
-                        KeyCode::Char(c) if c.is_digit(10) => {
-                            chunk_size = c.to_digit(10).unwrap() as usize;
-                        }
-                        _ => {}
-                    }
-                    last_event_time = Instant::now(); // Reset event time for debouncing
-                    word_delay = Duration::from_millis(60000 / speed); // Recalculate delay
-                }
-            }
-        }
     }
 
     terminal::disable_raw_mode().unwrap();
