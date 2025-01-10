@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-crossterm = "*"
+ratatui = "*"
 clap="*"
 dirs-next="*"
+crossterm = "0.26" 
