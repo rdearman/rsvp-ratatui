@@ -18,6 +18,9 @@ use std::time::{Duration, Instant};
 
 
 pub fn run_ui(mut speed: u64, mut chunk_size: usize, total_words: usize, words: Vec<String>) {
+	const BGRND: Color = Color::Rgb(10, 34, 171); // .style(Style::default().bg(BGRND))
+	const TXT: Color = Color::Rgb(63, 252, 123); // .style(Style::default().bg(TXT))
+	const SCRTEXT: Color = Color::Rgb(230, 230, 250); 
     let mut current_word_index = 0;
     let mut paused = false; // Track if the display is paused
     let mut word_delay = Duration::from_millis(60000 / speed); // Delay between words
@@ -43,9 +46,9 @@ pub fn run_ui(mut speed: u64, mut chunk_size: usize, total_words: usize, words: 
                     KeyCode::PageUp => speed += 100,
                     KeyCode::PageDown => speed = speed.saturating_sub(100),
                     KeyCode::Char('q') => break, // Quit the program
-					KeyCode::Char('p') => break, // Quit the program
+					KeyCode::Char('p') => {}, // Quit the program
 					KeyCode::Char('l') => {} //load_words_from_file_ui();} // Quit the program
-					KeyCode::Char('b') => break, // Quit the program
+					KeyCode::Char('b') => {}, // Quit the program
                     KeyCode::Right => current_word_index = (current_word_index + chunk_size).min(words.len()),
                     KeyCode::Left => current_word_index = current_word_index.saturating_sub(chunk_size),
                     KeyCode::Char(c) if c.is_digit(10) => {
@@ -73,6 +76,7 @@ pub fn run_ui(mut speed: u64, mut chunk_size: usize, total_words: usize, words: 
 		{
 			//stop the words!
 		}
+		
 
         // Drawing the UI
         terminal.draw(|f| {
@@ -83,6 +87,12 @@ pub fn run_ui(mut speed: u64, mut chunk_size: usize, total_words: usize, words: 
                 "End of text".to_string()
             };
 
+			// Convert word_display to styled text
+			let styled_text = Text::from(Span::styled(
+				word_display,                       // The content to display
+				Style::default().fg(TXT),           // Apply foreground (text) colour
+			));
+			
             let size = f.area();
 
             // Split the screen vertically
@@ -100,21 +110,21 @@ pub fn run_ui(mut speed: u64, mut chunk_size: usize, total_words: usize, words: 
             // Quick Keys Block
             let quick_keys_text = "[Q]uit | [Space] pause/resume | [L]oad File | [P]references | [B]ookmark | [↑] +10 | [↓] -10 | [PgUp] +100 | [PgDn] -100 | [1-9] chunk size | [←] skip back 5 | [→] skip forward 5";
             let quick_keys = Paragraph::new(quick_keys_text)
-                .block(Block::default().borders(Borders::ALL).title("Quick Keys"));
+                .block(Block::default().borders(Borders::ALL).title("Menu Keys").style(Style::default().bg(BGRND).fg(SCRTEXT)));
             f.render_widget(quick_keys, chunks[0]);
 
             // Top Spacer Block
-            let top_spacer = Block::default().style(Style::default().bg(Color::Black));
+            let top_spacer = Block::default().style(Style::default().bg(BGRND).fg(SCRTEXT));
             f.render_widget(top_spacer, chunks[1]);
 
             // Text Block
-            let text_content = Paragraph::new(word_display)
-                .block(Block::default().borders(Borders::ALL).title("Text"))
+            let text_content = Paragraph::new(styled_text)
+                .block(Block::default().borders(Borders::ALL).style(Style::default().bg(BGRND).fg(TXT)))
                 .alignment(Alignment::Center);
             f.render_widget(text_content, chunks[2]);
 
             // Bottom Spacer Block
-            let bottom_spacer = Block::default().style(Style::default().bg(Color::Black));
+            let bottom_spacer = Block::default().style(Style::default().bg(BGRND).fg(SCRTEXT));
             f.render_widget(bottom_spacer, chunks[3]);
 
             // Stats and Progress Block: Split vertically instead of horizontally
@@ -142,7 +152,7 @@ pub fn run_ui(mut speed: u64, mut chunk_size: usize, total_words: usize, words: 
                 Line::from(Span::raw(format!("Total Words Read: {} of {}", words_read, total_words))),
             ]);
             let left_stats = Paragraph::new(left_stats_text)
-                .block(Block::default().borders(Borders::ALL).title("Reading Statistics"));
+                .block(Block::default().borders(Borders::ALL).title("Reading Statistics").style(Style::default().bg(BGRND).fg(SCRTEXT)));
             f.render_widget(left_stats, stats_chunks[0]);
 
             // Right Stats Block (Part 2)
@@ -151,13 +161,13 @@ pub fn run_ui(mut speed: u64, mut chunk_size: usize, total_words: usize, words: 
                 Line::from(Span::raw(format!("Chunk Size: {}", chunk_size))),
             ]);
             let right_stats = Paragraph::new(right_stats_text)
-                .block(Block::default().borders(Borders::ALL).title("Speed Statistics"));
+                .block(Block::default().borders(Borders::ALL).title("Speed Statistics").style(Style::default().bg(BGRND).fg(SCRTEXT)));
             f.render_widget(right_stats, stats_chunks[1]);
 
             // Progress Block
             let progress_percentage = words_read as f64 / total_words as f64 * 100.0;
             let progress = Gauge::default()
-                .block(Block::default().borders(Borders::ALL).title("Progress"))
+                .block(Block::default().borders(Borders::ALL).title("Progress").style(Style::default().bg(BGRND).fg(SCRTEXT)))
                 .gauge_style(ratatui::style::Style::default())
                 .ratio(progress_percentage / 100.0);
             f.render_widget(progress, stats_progress_chunks[1]);
