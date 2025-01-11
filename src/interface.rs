@@ -180,15 +180,29 @@ pub fn run_ui(mut speed: u64, mut chunk_size: usize, mut total_words: usize, mut
 
                     }
 					KeyCode::Char('b') => {
-						bookmarked = !bookmarked;
+						bookmarked = !bookmarked; // Toggle bookmark state
 						if bookmarked {
 							// Set the bookmark
 							bookmark = current_word_index.min(words.len());
 						} else {
 							// Restore the bookmark
 							current_word_index = bookmark.min(words.len());
+							// Redraw the screen only after restoring the bookmark
 							terminal.clear().unwrap();
-							terminal.draw(|f| draw_main_ui(f, current_word_index, chunk_size, &words, total_words, speed, words_read, reading_time, bookmarked)).unwrap();
+							terminal.draw(|f| {
+								draw_main_ui(
+									f,
+									current_word_index,
+									chunk_size,
+									&words,
+									total_words,
+									speed,
+									words_read,
+									reading_time,
+									bookmarked,
+								)
+							})
+							.unwrap();
 						}
 					}
 					KeyCode::Char('q') => break, // Quit
