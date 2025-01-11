@@ -1,6 +1,6 @@
-use std::io::{self, stdout};
+use std::io::{stdout};
 use dirs_next::home_dir;
-use std::fs::{self, File};
+use std::fs::{File};
 use std::io::{Read, Write}; // Ensure Write is included
 
 use ratatui::{
