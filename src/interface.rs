@@ -31,6 +31,7 @@ fn draw_main_ui(
     words_read: usize,
     reading_time: f64,
 	bookmarked: bool,
+	bookmark: usize,
 ) {
     const BGRND: Color = Color::Rgb(10, 34, 171); // Background color
     const TXT: Color = Color::Rgb(63, 252, 123); // Text color
@@ -115,6 +116,7 @@ fn draw_main_ui(
 		Line::from(Span::raw(format!("Speed: {} WPM", speed))),
 		Line::from(Span::raw(format!("Chunk Size: {}", chunk_size))),
 		Line::from(Span::raw(format!("Bookmarked: {}", bookmarked))),
+		Line::from(Span::raw(format!("Bookmarked Word#: {}", bookmark))),
 	]);
 	let right_stats = Paragraph::new(right_stats_text)
 		.block(Block::default().borders(Borders::ALL).title("Settings"))
@@ -138,8 +140,9 @@ fn draw_main_ui(
 pub fn run_ui(mut speed: u64, mut chunk_size: usize, mut total_words: usize, mut words: Vec<String>) {
     let mut current_word_index = 0;
     let mut paused = false;
-	let mut bookmark = 0;
-	let mut bookmarked = false;
+    let mut bookmark = 0;
+    let mut bookmarked = false;
+    let mut consume_next_event = false; // Debounce flag for key events
     let mut word_delay = Duration::from_millis(60000 / speed);
     let mut last_update = Instant::now();
 
@@ -153,20 +156,53 @@ pub fn run_ui(mut speed: u64, mut chunk_size: usize, mut total_words: usize, mut
     let mut reading_time = 0.0;
 
     // Initial draw of the main screen
-    terminal.draw(|f| draw_main_ui(f, current_word_index, chunk_size, &words, total_words, speed, words_read, reading_time, bookmarked)).unwrap();
+    terminal.draw(|f| {
+        draw_main_ui(
+            f,
+            current_word_index,
+            chunk_size,
+            &words,
+            total_words,
+            speed,
+            words_read,
+            reading_time,
+            bookmarked,
+			bookmark,
+        )
+    })
+    .unwrap();
 
     loop {
         // Handle key events
         if event::poll(Duration::from_millis(10)).unwrap() {
             if let Event::Key(KeyEvent { code, .. }) = event::read().unwrap() {
+                // Skip event if debounce flag is set
+                if consume_next_event {
+                    consume_next_event = false; // Reset debounce flag
+                    continue; // Skip this event
+                }
+
                 match code {
                     KeyCode::Char(' ') => paused = !paused, // Toggle pause
                     KeyCode::Char('p') => {
                         // Preferences screen
                         show_preferences_ui(&mut speed, &mut chunk_size);
-						terminal.clear().unwrap();
-                        terminal.draw(|f| draw_main_ui(f, current_word_index, chunk_size, &words, total_words, speed, words_read, reading_time,bookmarked)).unwrap();
-
+                        terminal.clear().unwrap();
+                        terminal.draw(|f| {
+                            draw_main_ui(
+                                f,
+                                current_word_index,
+                                chunk_size,
+                                &words,
+                                total_words,
+                                speed,
+                                words_read,
+                                reading_time,
+                                bookmarked,
+								bookmark,
+                            )
+                        })
+                        .unwrap();
                     }
                     KeyCode::Char('l') => {
                         // Load file screen
@@ -175,37 +211,55 @@ pub fn run_ui(mut speed: u64, mut chunk_size: usize, mut total_words: usize, mut
                             total_words = words.len();
                             current_word_index = 0;
                         }
-						terminal.clear().unwrap();
-                        terminal.draw(|f| draw_main_ui(f, current_word_index, chunk_size, &words, total_words, speed, words_read, reading_time, bookmarked)).unwrap();
-
+                        terminal.clear().unwrap();
+                        terminal.draw(|f| {
+                            draw_main_ui(
+                                f,
+                                current_word_index,
+                                chunk_size,
+                                &words,
+                                total_words,
+                                speed,
+                                words_read,
+                                reading_time,
+                                bookmarked,
+								bookmark,
+                            )
+                        })
+                        .unwrap();
                     }
-					KeyCode::Char('b') => {
-						bookmarked = !bookmarked; // Toggle bookmark state
-						if bookmarked {
-							// Set the bookmark
-							bookmark = current_word_index.min(words.len());
-						} else {
-							// Restore the bookmark
-							current_word_index = bookmark.min(words.len());
-							// Redraw the screen only after restoring the bookmark
-							terminal.clear().unwrap();
-							terminal.draw(|f| {
-								draw_main_ui(
-									f,
-									current_word_index,
-									chunk_size,
-									&words,
-									total_words,
-									speed,
-									words_read,
-									reading_time,
-									bookmarked,
-								)
-							})
-							.unwrap();
-						}
-					}
-					KeyCode::Char('q') => break, // Quit
+                    KeyCode::Char('b') => {
+                        if !consume_next_event {
+                            bookmarked = !bookmarked; // Toggle bookmark state
+                            if bookmarked {
+                                // Set the bookmark
+                                bookmark = current_word_index.min(words.len());
+                            } else {
+                                // Restore the bookmark
+                                current_word_index = bookmark.min(words.len());
+								bookmark=0;
+								words_read = current_word_index;
+                                terminal.clear().unwrap();
+                                terminal.draw(|f| {
+                                    draw_main_ui(
+                                        f,
+                                        current_word_index,
+                                        chunk_size,
+                                        &words,
+                                        total_words,
+                                        speed,
+                                        words_read,
+                                        reading_time,
+                                        bookmarked,
+										bookmark,
+                                    )
+                                })
+                                .unwrap();
+                            }
+                            consume_next_event = true; // Set debounce flag
+                        }
+                    }
+                    KeyCode::Char('q') => break, // Quit
                     KeyCode::Up => speed += 10, // Increase speed
                     KeyCode::Down => speed = speed.saturating_sub(10), // Decrease speed
                     KeyCode::PageUp => speed += 100, // Large speed increase
@@ -242,7 +296,21 @@ pub fn run_ui(mut speed: u64, mut chunk_size: usize, mut total_words: usize, mut
             }
 
             // Redraw the main UI with updated state
-            terminal.draw(|f| draw_main_ui(f, current_word_index, chunk_size, &words, total_words, speed, words_read, reading_time, bookmarked)).unwrap();
+            terminal.draw(|f| {
+                draw_main_ui(
+                    f,
+                    current_word_index,
+                    chunk_size,
+                    &words,
+                    total_words,
+                    speed,
+                    words_read,
+                    reading_time,
+                    bookmarked,
+					bookmark,
+                )
+            })
+            .unwrap();
         }
     }
 
@@ -250,6 +318,7 @@ pub fn run_ui(mut speed: u64, mut chunk_size: usize, mut total_words: usize, mut
     terminal::disable_raw_mode().unwrap();
     terminal.backend_mut().execute(LeaveAlternateScreen).unwrap();
 }
+
 
 /* ======= Prompt User =========== */
 
