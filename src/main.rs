@@ -37,13 +37,13 @@ fn main() {
         .get_matches();
 
     // Determine speed and chunk size with priority: Command-line > Saved Preferences > Defaults
-    let mut speed: u64 = matches
+    let  speed: u64 = matches
         .get_one::<String>("speed")
         .and_then(|s| s.parse().ok())
         .or(saved_speed)
         .unwrap_or(250); // Default speed
 
-    let mut chunk_size: usize = matches
+    let  chunk_size: usize = matches
         .get_one::<String>("chunk_size")
         .and_then(|cs| cs.parse().ok())
         .or(saved_chunk_size)
@@ -55,7 +55,7 @@ fn main() {
     // Get the input file or default to help text
     let input_file = matches.get_one::<String>("input").map(String::as_str).unwrap_or("default_help.txt");
 
-	let mut words = if input_file == "default_help.txt" {
+	let  words = if input_file == "default_help.txt" {
 		vec![
 			"Welcome to RSVP!".to_string(),
 			"This program displays one word at a time in the terminal.".to_string(),

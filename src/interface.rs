@@ -6,7 +6,7 @@ use ratatui::{
     Terminal,
 };
 use ratatui::style::{Color, Style};
-use std::io::{self, Write};
+use std::io::{ Write};
 use crossterm::{
     ExecutableCommand,
     event::{self, Event, KeyCode, KeyEvent},
@@ -15,7 +15,7 @@ use crossterm::{
 use std::io::stdout;
 use std::time::{Duration, Instant};
 use crate::utilities::save_settings;
-use ratatui::{Frame, backend::Backend};
+use ratatui::{Frame}; // , backend::Backend};
 use std::fs::OpenOptions;
 
 
@@ -320,22 +320,6 @@ pub fn run_ui(mut speed: u64, mut chunk_size: usize, mut total_words: usize, mut
 }
 
 
-/* ======= Prompt User =========== */
-
-pub fn prompt_user(prompt: &str) -> String {
-    // Temporarily disable raw mode to allow standard input
-    terminal::disable_raw_mode().unwrap();
-    print!("{}", prompt);
-    io::stdout().flush().unwrap();
-
-    let mut input = String::new();
-    io::stdin().read_line(&mut input).unwrap();
-    terminal::enable_raw_mode().unwrap();
-
-    input.trim().to_string()
-}
-
-
 /* ======= Load FIle UI =========== */
 
 
@@ -354,7 +338,7 @@ pub fn show_load_file_ui(file_path: &mut String) -> Option<Vec<String>> {
     loop {
         // Redraw the UI
         terminal.draw(|f| {
-            let size = f.size();
+            let size = f.area();
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([
@@ -449,7 +433,7 @@ pub fn show_preferences_ui(speed: &mut u64, chunk_size: &mut usize) {
 
         // Redraw the UI
         terminal.draw(|f| {
-            let size = f.size();
+            let size = f.area();
 
             // Layout for the menu
             let chunks = Layout::default()
