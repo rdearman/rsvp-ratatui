@@ -237,7 +237,8 @@ pub fn prompt_user(prompt: &str) -> String {
 }
 
 
-/* ======= Load File UI =========== */
+/* ======= Load FIle UI =========== */
+
 
 pub fn show_load_file_ui(file_path: &mut String) -> Option<Vec<String>> {
     let mut terminal = {
@@ -246,10 +247,13 @@ pub fn show_load_file_ui(file_path: &mut String) -> Option<Vec<String>> {
         Terminal::new(backend).unwrap()
     };
 
+    let mut consume_next_event = false; // Debounce flag to prevent double processing
+
     // Clear the screen
     terminal.clear().unwrap();
 
     loop {
+        // Redraw the UI
         terminal.draw(|f| {
             let size = f.size();
             let chunks = Layout::default()
@@ -266,23 +270,35 @@ pub fn show_load_file_ui(file_path: &mut String) -> Option<Vec<String>> {
             f.render_widget(input_block, chunks[1]);
         }).unwrap();
 
+        // Handle user input
         if let Ok(event::Event::Key(KeyEvent { code, .. })) = event::read() {
+            // Skip processing if the debounce flag is set
+            if consume_next_event {
+                consume_next_event = false; // Reset the flag
+                continue; // Skip this event
+            }
+
             match code {
                 KeyCode::Enter => {
+                    // Try to load the file
                     if let Ok(content) = std::fs::read_to_string(file_path.clone()) {
                         terminal::disable_raw_mode().unwrap();
                         return Some(content.split_whitespace().map(String::from).collect());
                     } else {
+                        // Clear the file path if loading fails
                         file_path.clear();
                     }
                 }
                 KeyCode::Backspace => {
-                    file_path.pop();
+                    file_path.pop(); // Remove the last character
+                    consume_next_event = true; // Prevent double processing
                 }
                 KeyCode::Char(c) => {
-                    file_path.push(c);
+                    file_path.push(c); // Add the character to the file path
+                    consume_next_event = true; // Prevent double processing
                 }
                 KeyCode::Esc => {
+                    // Exit without loading
                     terminal::disable_raw_mode().unwrap();
                     return None;
                 }
