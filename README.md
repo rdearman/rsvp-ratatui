@@ -1,85 +1,98 @@
-# RSVP (Rapid Serial Visual Presentation)
 
-RSVP is a terminal-based application that displays text one word at a time, helping users practice speed reading and improve reading efficiency. Users can adjust the reading speed, chunk size (number of words displayed at once), and navigate through text with intuitive controls.
+# RSVP Program
 
-This version of RSVP is a fork of the original application and has been updated to use the Ratatui crate instead of Crossterm. This change enables better display capabilities and more options for customization, making the application more versatile and visually appealing.
+Welcome to **RSVP** (Rapid Serial Visual Presentation)! This program allows users to read text files by displaying words or chunks of words one at a time in the terminal at a user-defined speed. Designed for both programmers and non-programmers, RSVP provides an efficient way to speed-read and manage text content.
 
-## Features
+---
 
-- Display one or more words at a time in the terminal.
-- Adjustable speed in words per minute (WPM).
-- Configurable chunk size (1-9 words).
-- Interactive preferences menu to save and modify settings.
-- Real-time progress bar indicating reading completion percentage.
-- Supports file input for custom text or default usage instructions.
+## 📋 Current Features
 
-## Installation
+- **Word-by-Word Display**: Displays words sequentially in the terminal.
+- **Customisable Speed**: Adjust the speed (words per minute) in real time using keyboard shortcuts.
+- **Chunk Size Control**: Choose how many words to display at a time.
+- **Progress Tracking**: Shows the number of words read and the total word count.
+- **Persistent Preferences**: Saves speed and chunk size settings for future sessions.
+- **Intuitive Controls**: Use keyboard shortcuts for seamless navigation:
+  - `[Q]` to quit
+  - `[Space]` to pause or resume
+  - `[↑]`/`[↓]` to increase or decrease speed by 10 WPM
+  - `[PgUp]`/`[PgDn]` to adjust speed by 100 WPM
+  - `[1-9]` to set chunk size
+  - `[←]`/`[→]` to skip backward or forward by 5 words
 
-1. **Clone the Repository**:
+---
+
+## 🚀 How to Get Started
+
+### For Non-Programmers
+
+1. **Download and Install:**
+   - Install a Rust toolchain by visiting [Rust's official site](https://rust-lang.org/).
+   - Follow the instructions to install `rustup` and `cargo`.
+
+2. **Download the Program:**
+   - Visit the [GitHub repository](https://github.com/your_repo_link).
+   - Click "Code" > "Download ZIP" and extract it to a folder on your computer.
+
+3. **Build and Run:**
+   - Open a terminal in the folder where the program is located.
+   - Run the following commands:
+     ```bash
+     cargo build --release
+     ./target/release/rsvp --help
+     ```
+
+4. **Load a File:**
+   - Save your text file to a location on your computer.
+   - Use the following command to start reading:
+     ```bash
+     ./target/release/rsvp -i path/to/your/file.txt
+     ```
+
+### For Programmers
+
+1. **Clone the Repository:**
    ```bash
-   git clone https://github.com/rdearman/rsvp-ratatui.git
-   cd rsvp-ratatui
+   git clone https://github.com/your_repo_link.git
+   cd rsvp
    ```
 
-2. **Build the Project**:
-   Make sure you have Rust installed. Then, build the project using Cargo:
+2. **Build and Run:**
    ```bash
    cargo build --release
+   ./target/release/rsvp -i path/to/your/file.txt
    ```
 
-3. **Run the Application**:
-   ```bash
-   cargo run -- -i <input_file> -s <speed_in_wpm>
-   ```
+3. **Customisation:**
+   - Modify the source code as needed.
+   - Build the project with `cargo build` to apply changes.
 
-   Example:
-   ```bash
-   cargo run -- -i sample.txt -s 300
-   ```
+---
 
-## Usage
+## 📜 Planned Features
 
-### Controls
-- `[Up]` / `[Down]`: Increase or decrease speed by 10 WPM.
-- `[PgUp]` / `[PgDn]`: Increase or decrease speed by 100 WPM.
-- `[Right]` / `[Left]`: Skip forward or backward by the current chunk size.
-- `[1-9]`: Set chunk size directly to a number (1-9 words).
-- `[Space]`: Pause or resume the text display.
-- `[C]`: Change chunk size (via number prompt).
-- `[S]`: Change speed (via WPM prompt).
-- `[P]`: Open preferences menu.
-- `[Q]`: Quit the program.
+- **Save Reading Progress:** Automatically save your position in the file and allow resuming from where you left off.
+- **Improved File Management:** Add a file selector interface for easier file loading.
+- **Enhanced Visualisation:** Display formatted text or highlight keywords for better readability.
+- **Mobile/GUI Version:** Expand to a graphical interface or mobile app.
 
-### Preferences Menu
-- Modify reading speed and chunk size interactively.
-- Save settings to `~/.rsvp_settings` for future sessions.
+---
 
-### Default Help Text
-If no file is provided, the program will display a default instructional text to guide users.
+## 🛠 Technical Details
 
-## Future Enhancements
+- **Language:** Rust
+- **Dependencies:**
+  - `clap` for command-line argument parsing
+  - `ratatui` for terminal-based UI
+  - `crossterm` for terminal event handling
+- **Persistence:** Saves preferences to a hidden file in the user's home directory (`~/.rsvp_settings`).
 
-- **Word Highlighting**: Highlight key parts of the text (e.g., nouns, verbs) to improve comprehension.
-- **Custom Themes**: Add options for light, dark, and high-contrast themes.
-- **Keyboard Shortcuts Display**: Dynamically update and show shortcuts relevant to the current state (e.g., hide `[PgUp]` if not applicable).
-- **Dynamic Progress Updates**: Allow users to toggle a percentage-only progress indicator instead of the full bar.
-- **Multi-File Input**: Enable loading multiple files and navigating between them.
-- **Session Summary**: Show total reading time, average speed, and other statistics upon completion.
-- **Audio Cues**: Add optional sound feedback for pacing and transitions.
-- **Language Support**: Include localization for non-English languages.
-- **Word Splitting**: Break long words intelligently if they exceed the screen width.
-- **Text Search**: Allow users to search for specific words or phrases.
-- **Bookmarking**: Save progress and resume later from the last-read position.
+---
 
-## Contributing
+## 🤝 Contributions
 
-Contributions are welcome! Please open an issue or submit a pull request to suggest or implement new features.
+This project is primarily for personal use and learning, but feedback and suggestions are welcome. Feel free to fork the repository or submit issues via GitHub.
 
-## License
+---
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
-
-## Acknowledgments
-
-- Built with [Rust](https://www.rust-lang.org/) and the [ratatui](https://crates.io/crates/ratatui) library.
-- Inspired by traditional RSVP reading applications.
+Enjoy rapid reading with RSVP!
