@@ -6,7 +6,7 @@ use ratatui::{
     Terminal,
 };
 use ratatui::style::{Color, Style};
-
+use std::io::{self, Write};
 use crossterm::{
     ExecutableCommand,
     event::{self, Event, KeyCode, KeyEvent},
@@ -16,7 +16,11 @@ use std::io::stdout;
 use std::time::{Duration, Instant};
 use crate::utilities::save_settings;
 use ratatui::{Frame, backend::Backend};
+use std::fs::OpenOptions;
 
+
+
+/* ======= Draw UI =========== */
 fn draw_main_ui(
     f: &mut Frame,
     current_word_index: usize,
@@ -82,40 +86,52 @@ fn draw_main_ui(
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
         .split(chunks[4]);
+	// Split chunks[4] into two: one for stats, one for the progress bar
+	let stats_progress_chunks = Layout::default()
+		.direction(Direction::Vertical) // Stack stats and progress vertically
+		.constraints([Constraint::Percentage(70), Constraint::Percentage(30)]) // 70% for stats, 30% for progress
+		.split(chunks[4]);
 
-    // Left Stats
-    let left_stats_text = Text::from(vec![
-        Line::from(Span::raw(format!("Current Time Reading: {:.2} seconds", reading_time))),
-        Line::from(Span::raw(format!("Words Read This Session: {}", words_read))),
-        Line::from(Span::raw(format!("Total Words Read: {} of {}", words_read, total_words))),
-    ]);
-    let left_stats = Paragraph::new(left_stats_text)
-        .block(Block::default().borders(Borders::ALL).title("Reading Statistics"))
-        .style(Style::default().fg(SCRTEXT).bg(BGRND));
-    f.render_widget(left_stats, stats_chunks[0]);
+	// Split the stats block into two horizontal parts
+	let stats_chunks = Layout::default()
+		.direction(Direction::Horizontal)
+		.constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+		.split(stats_progress_chunks[0]);
 
-    // Right Stats
-    let right_stats_text = Text::from(vec![
-        Line::from(Span::raw(format!("Speed: {} WPM", speed))),
-        Line::from(Span::raw(format!("Chunk Size: {}", chunk_size))),
-    ]);
-    let right_stats = Paragraph::new(right_stats_text)
-        .block(Block::default().borders(Borders::ALL).title("Speed Statistics"))
-        .style(Style::default().fg(SCRTEXT).bg(BGRND));
-    f.render_widget(right_stats, stats_chunks[1]);
+	// Left Stats
+	let left_stats_text = Text::from(vec![
+		Line::from(Span::raw(format!("Current Time Reading: {:.2} seconds", reading_time))),
+		Line::from(Span::raw(format!("Words Read This Session: {}", words_read))),
+		Line::from(Span::raw(format!("Total Words Read: {} of {}", words_read, total_words))),
+	]);
+	let left_stats = Paragraph::new(left_stats_text)
+		.block(Block::default().borders(Borders::ALL).title("Reading Statistics"))
+		.style(Style::default().fg(SCRTEXT).bg(BGRND));
+	f.render_widget(left_stats, stats_chunks[0]);
 
-    // Progress Block
-    let progress_percentage = words_read as f64 / total_words as f64 * 100.0;
-    let progress = Gauge::default()
-        .block(Block::default().borders(Borders::ALL).title("Progress"))
-        .gauge_style(Style::default().fg(Color::Green).bg(BGRND))
-        .ratio(progress_percentage / 100.0);
-    f.render_widget(progress, chunks[4]);
+	// Right Stats
+	let right_stats_text = Text::from(vec![
+		Line::from(Span::raw(format!("Speed: {} WPM", speed))),
+		Line::from(Span::raw(format!("Chunk Size: {}", chunk_size))),
+	]);
+	let right_stats = Paragraph::new(right_stats_text)
+		.block(Block::default().borders(Borders::ALL).title("Speed Statistics"))
+		.style(Style::default().fg(SCRTEXT).bg(BGRND));
+	f.render_widget(right_stats, stats_chunks[1]);
+
+	// Progress Block
+	let progress_percentage = words_read as f64 / total_words as f64 * 100.0;
+	let progress = Gauge::default()
+		.block(Block::default().borders(Borders::ALL).title("Progress"))
+		.gauge_style(Style::default().fg(Color::Green).bg(BGRND))
+		.ratio(progress_percentage / 100.0);
+	f.render_widget(progress, stats_progress_chunks[1]);
+
+
+
 }
 
-
-
-
+/* ======= Run UI =========== */
 
 pub fn run_ui(mut speed: u64, mut chunk_size: usize, mut total_words: usize, mut words: Vec<String>) {
     let mut current_word_index = 0;
@@ -205,96 +221,23 @@ pub fn run_ui(mut speed: u64, mut chunk_size: usize, mut total_words: usize, mut
     terminal.backend_mut().execute(LeaveAlternateScreen).unwrap();
 }
 
+/* ======= Prompt User =========== */
 
+pub fn prompt_user(prompt: &str) -> String {
+    // Temporarily disable raw mode to allow standard input
+    terminal::disable_raw_mode().unwrap();
+    print!("{}", prompt);
+    io::stdout().flush().unwrap();
 
-pub fn prompt_user(message: &str) -> String {
-    use std::io::{stdin, stdout, Write};
     let mut input = String::new();
-    print!("{} ", message);
-    stdout().flush().unwrap();
-    stdin().read_line(&mut input).unwrap();
+    io::stdin().read_line(&mut input).unwrap();
+    terminal::enable_raw_mode().unwrap();
+
     input.trim().to_string()
 }
 
 
-
-pub fn show_preferences_ui(speed: &mut u64, chunk_size: &mut usize) {
-    let mut selected_option = 0; // 0 = Speed, 1 = Chunk Size, 2 = Save, 3 = Cancel
-    let options = ["Set Speed", "Set Chunk Size", "Save Preferences", "Cancel"];
-    let mut terminal = {
-        terminal::enable_raw_mode().unwrap();
-        let backend = CrosstermBackend::new(stdout());
-        Terminal::new(backend).unwrap()
-    };
-
-    // Clear the screen
-    terminal.clear().unwrap();
-
-    loop {
-        terminal.draw(|f| {
-            let size = f.size();
-
-            // Layout for the menu
-            let chunks = Layout::default()
-                .direction(Direction::Vertical)
-                .constraints(
-                    options.iter().map(|_| Constraint::Length(3)).chain([Constraint::Min(1)]),
-                )
-                .split(size);
-
-            for (i, option) in options.iter().enumerate() {
-                let style = if i == selected_option {
-                    Style::default().fg(Color::Yellow).bg(Color::Blue)
-                } else {
-                    Style::default()
-                };
-
-                let paragraph = Paragraph::new(*option)
-                    .block(Block::default().borders(Borders::ALL).style(style));
-                f.render_widget(paragraph, chunks[i]);
-            }
-        }).unwrap();
-
-        if let Ok(event::Event::Key(KeyEvent { code, .. })) = event::read() {
-            match code {
-                KeyCode::Up => {
-                    if selected_option > 0 {
-                        selected_option -= 1;
-                    }
-                }
-                KeyCode::Down => {
-                    if selected_option < options.len() - 1 {
-                        selected_option += 1;
-                    }
-                }
-                KeyCode::Enter => {
-                    match selected_option {
-                        0 => {
-                            // Set Speed
-                            *speed = prompt_user("Enter the new speed: ").parse().unwrap_or(*speed);
-                        }
-                        1 => {
-                            // Set Chunk Size
-                            *chunk_size = prompt_user("Enter the new chunk size: ").parse().unwrap_or(*chunk_size);
-                        }
-                        2 => {
-                            // Save Preferences
-                            save_settings(*speed, *chunk_size);
-                            break;
-                        }
-                        3 => break, // Cancel
-                        _ => {}
-                    }
-                }
-                KeyCode::Esc => break, // Exit preferences on ESC
-                _ => {}
-            }
-        }
-    }
-
-    terminal::disable_raw_mode().unwrap();
-}
-
+/* ======= Load File UI =========== */
 
 pub fn show_load_file_ui(file_path: &mut String) -> Option<Vec<String>> {
     let mut terminal = {
@@ -347,4 +290,194 @@ pub fn show_load_file_ui(file_path: &mut String) -> Option<Vec<String>> {
             }
         }
     }
+}
+
+
+
+
+
+/* ======= Preferences UI =========== */
+
+
+
+
+pub fn show_preferences_ui(speed: &mut u64, chunk_size: &mut usize) {
+    let mut selected_option = 0; // 0 = Speed, 1 = Chunk Size, 2 = Save, 3 = Cancel
+    let options = ["Set Speed", "Set Chunk Size", "Save Preferences", "Cancel"];
+    let mut user_input_mode = false; // Tracks if the user is entering a value
+    let mut input_value = String::new(); // Tracks the user's input for the entry block
+    let mut consume_next_event = false; // Flag to consume the next event (debounce)
+
+    // Open the log file (append mode)
+    let mut log_file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("err.log")
+        .unwrap();
+
+    let mut terminal = {
+        terminal::enable_raw_mode().unwrap();
+        let backend = CrosstermBackend::new(stdout());
+        Terminal::new(backend).unwrap()
+    };
+
+    terminal.clear().unwrap();
+
+    loop {
+        // Log the current state to the file
+        writeln!(
+            log_file,
+            "DEBUG: selected_option = {}, user_input_mode = {}, input_value = '{}'",
+            selected_option, user_input_mode, input_value
+        )
+        .unwrap();
+
+        // Redraw the UI
+        terminal.draw(|f| {
+            let size = f.size();
+
+            // Layout for the menu
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints(
+                    options.iter().map(|_| Constraint::Length(3)).chain([Constraint::Min(1)]),
+                )
+                .split(size);
+
+            for (i, option) in options.iter().enumerate() {
+                let style = if i == selected_option {
+                    Style::default().fg(Color::Yellow).bg(Color::Blue)
+                } else {
+                    Style::default()
+                };
+
+                let paragraph = Paragraph::new(*option)
+                    .block(Block::default().borders(Borders::ALL).style(style));
+                f.render_widget(paragraph, chunks[i]);
+            }
+
+            // Add user entry block at the bottom
+            let user_entry_block = Paragraph::new(if user_input_mode {
+                format!(
+                    "Current Value: {}\nEnter New Value: {}",
+                    if selected_option == 0 {
+                        speed.to_string()
+                    } else if selected_option == 1 {
+                        chunk_size.to_string()
+                    } else {
+                        "".to_string()
+                    },
+                    input_value
+                )
+            } else {
+                format!(
+                    "Current Value: {}",
+                    if selected_option == 0 {
+                        speed.to_string()
+                    } else if selected_option == 1 {
+                        chunk_size.to_string()
+                    } else {
+                        "".to_string()
+                    }
+                )
+            })
+            .block(Block::default().borders(Borders::ALL).title("User Entry Block"));
+            f.render_widget(user_entry_block, chunks[chunks.len() - 1]);
+        }).unwrap();
+
+        // Read user input
+        if let Ok(event::Event::Key(KeyEvent { code, .. })) = event::read() {
+            // Debounce handling
+            if consume_next_event {
+                consume_next_event = false; // Reset the flag
+                continue; // Skip this event
+            }
+
+            if user_input_mode {
+                // Log key event to the file
+                writeln!(log_file, "DEBUG: Input Mode Key Event = {:?}", code).unwrap();
+
+                // Handle user input in the entry block
+                match code {
+                    KeyCode::Char(c) => {
+                        input_value.push(c); // Append characters
+                        writeln!(log_file, "DEBUG: Char input = '{}', input_value = '{}'", c, input_value).unwrap();
+                        consume_next_event = true; // Prevent double processing of Char input
+                    }
+                    KeyCode::Backspace => {
+                        input_value.pop(); // Remove last character
+                        consume_next_event = true; // Prevent double processing
+                    }
+                    KeyCode::Enter => {
+                        // Save the input value and exit input mode
+                        writeln!(log_file, "DEBUG: Saving input value: {}", input_value).unwrap();
+                        if selected_option == 0 {
+                            *speed = input_value.parse().unwrap_or(*speed);
+                        } else if selected_option == 1 {
+                            *chunk_size = input_value.parse().unwrap_or(*chunk_size);
+                        }
+                        save_settings(*speed, *chunk_size);
+                        input_value.clear(); // Clear the input buffer
+                        user_input_mode = false; // Exit input mode
+                        terminal.clear().unwrap(); // Clear the screen
+                        consume_next_event = true; // Prevent immediate reprocessing of Enter
+                    }
+                    KeyCode::Esc => {
+                        // Cancel input and return to menu
+                        writeln!(log_file, "DEBUG: Cancel input").unwrap();
+                        input_value.clear(); // Clear the input buffer
+                        user_input_mode = false; // Exit input mode
+                        terminal.clear().unwrap(); // Clear the screen
+                        consume_next_event = true; // Prevent immediate reprocessing of Esc
+                    }
+                    _ => {}
+                }
+                continue; // Skip menu handling while in input mode
+            } else {
+                // Log key event to the file
+                writeln!(log_file, "DEBUG: Menu Mode Key Event = {:?}", code).unwrap();
+
+                // Handle menu navigation
+                match code {
+                    KeyCode::Up => {
+                        if selected_option > 0 {
+                            selected_option -= 1;
+                            consume_next_event = true; // Prevent double processing of Up
+                        }
+                    }
+                    KeyCode::Down => {
+                        if selected_option < options.len() - 1 {
+                            selected_option += 1;
+                            consume_next_event = true; // Prevent double processing of Down
+                        }
+                    }
+                    KeyCode::Enter => {
+                        match selected_option {
+                            0 | 1 => {
+                                // Enable input mode for Set Speed or Set Chunk Size
+                                writeln!(log_file, "DEBUG: Entering input mode").unwrap();
+                                user_input_mode = true;
+                                input_value.clear(); // Clear the input buffer
+                                terminal.clear().unwrap(); // Clear the screen for input
+                                consume_next_event = true; // Prevent immediate reprocessing of Enter
+                                continue; // Consume Enter key and avoid processing further
+                            }
+                            2 => {
+                                // Save Preferences
+                                writeln!(log_file, "DEBUG: Save preferences").unwrap();
+                                save_settings(*speed, *chunk_size);
+                                break;
+                            }
+                            3 => break, // Cancel and exit
+                            _ => {}
+                        }
+                    }
+                    KeyCode::Esc => break, // Exit preferences on ESC
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    terminal::disable_raw_mode().unwrap();
 }
