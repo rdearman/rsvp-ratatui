@@ -1,15 +1,109 @@
-//use std::io::{stdout};
+use std::io::{Read, Write, stdout};
+use std::fs::{File, read_dir};
 use dirs_next::home_dir;
-use std::fs::{File};
-use std::io::{Read, Write}; // Ensure Write is included
+use crossterm::event::{self, KeyCode, KeyEvent};
+use crossterm::terminal;
+use ratatui::layout::{Constraint, Direction, Layout};
+use ratatui::widgets::{Block, Borders, List, ListItem};
+use ratatui::style::{Style, Color};
+use ratatui::Terminal;
+use crate::utilities::terminal::enable_raw_mode;
+use crate::utilities::terminal::disable_raw_mode;
 
-// use ratatui::{
-//     backend::CrosstermBackend,
-//     layout::{Constraint, Direction, Layout},
-//     widgets::{Block, Borders, Paragraph},
-//     Terminal,
-// };
-// use crossterm::{event::{self, KeyCode, KeyEvent}, terminal};
+
+/// File Selector UI Function
+pub fn file_selector_ui() -> Option<String> {
+    let mut current_dir = std::env::current_dir().expect("Failed to get current directory");
+    let mut file_entries = get_file_entries(&current_dir);
+    let mut selected_index = 0;
+
+    enable_raw_mode().unwrap();
+    let backend = ratatui::backend::CrosstermBackend::new(stdout());
+    let mut terminal = Terminal::new(backend).unwrap();
+
+    struct RawModeGuard;
+    impl Drop for RawModeGuard {
+        fn drop(&mut self) {
+            let _ = disable_raw_mode();
+        }
+    }
+    let _guard = RawModeGuard;
+
+    // Clear the screen before drawing the UI
+    terminal.clear().unwrap();
+
+    loop {
+        terminal.draw(|f| {
+            let size = f.area();
+            let items: Vec<ListItem> = file_entries
+                .iter()
+                .enumerate()
+                .map(|(i, entry)| {
+                    if i == selected_index {
+                        ListItem::new(format!("=> {}", entry)).style(Style::default().fg(Color::Black).bg(Color::Yellow))
+                    } else {
+                        ListItem::new(entry.clone())
+                    }
+                })
+                .collect();
+
+            let list = List::new(items)
+                .block(Block::default().borders(Borders::ALL).title("Select a File"));
+
+            f.render_widget(list, size);
+        }).unwrap();
+
+        if let Ok(event::Event::Key(KeyEvent { code, .. })) = event::read() {
+            match code {
+                KeyCode::Up => {
+                    if selected_index > 0 {
+                        selected_index -= 1;
+                    }
+                }
+                KeyCode::Down => {
+                    if selected_index < file_entries.len() - 1 {
+                        selected_index += 1;
+                    }
+                }
+                KeyCode::Enter => {
+                    let selected = &file_entries[selected_index];
+                    let selected_path = current_dir.join(selected);
+
+                    if selected_path.is_dir() {
+                        current_dir = selected_path;
+                        file_entries = get_file_entries(&current_dir);
+                        selected_index = 0;
+                    } else {
+                        terminal.clear().unwrap();
+                        return Some(selected_path.to_string_lossy().into_owned());
+                    }
+                }
+                KeyCode::Esc => {
+                    terminal.clear().unwrap();
+                    return None;
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+
+
+
+/// Helper function to get entries of a directory
+fn get_file_entries(dir: &std::path::Path) -> Vec<String> {
+    read_dir(dir)
+        .unwrap()
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .collect()
+}
+
+
+
+
+/* ==================================== */
 
 pub fn save_settings(speed: u64, chunk_size: usize) {
     if let Some(home) = home_dir() {
@@ -20,60 +114,6 @@ pub fn save_settings(speed: u64, chunk_size: usize) {
     }
 }
 
-
-// pub fn load_words_from_file_ui() -> Vec<String> {
-//     let mut file_path = String::new();
-//     let mut terminal = {
-//         terminal::enable_raw_mode().unwrap();
-//         let backend = CrosstermBackend::new(stdout());
-//         Terminal::new(backend).unwrap()
-//     };
-
-//     loop {
-//         terminal.draw(|f| {
-//             let size = f.area();
-
-//             // Main layout
-//             let chunks = Layout::default()
-//                 .direction(Direction::Vertical)
-//                 .constraints([
-//                     Constraint::Percentage(20), // Top spacer
-//                     Constraint::Percentage(60), // Form block
-//                     Constraint::Percentage(20), // Bottom spacer
-//                 ])
-//                 .split(size);
-
-//             // Input form
-//             let input_block = Paragraph::new(file_path.clone())
-//                 .block(Block::default().borders(Borders::ALL).title("Enter File Path"));
-//             f.render_widget(input_block, chunks[1]);
-//         }).unwrap();
-
-//         if let Ok(event::Event::Key(KeyEvent { code, .. })) = event::read() {
-//             match code {
-//                 KeyCode::Enter => {
-//                     if let Ok(content) = std::fs::read_to_string(&file_path) {
-//                         terminal::disable_raw_mode().unwrap();
-//                         return content.split_whitespace().map(String::from).collect();
-//                     } else {
-//                         file_path.clear();
-//                     }
-//                 }
-//                 KeyCode::Backspace => {
-//                     file_path.pop();
-//                 }
-//                 KeyCode::Char(c) => {
-//                     file_path.push(c);
-//                 }
-//                 KeyCode::Esc => {
-//                     terminal::disable_raw_mode().unwrap();
-//                     return vec![];
-//                 }
-//                 _ => {}
-//             }
-//         }
-//     }
-// }
 
 
 /// Load settings from the user's home directory
