@@ -33,8 +33,9 @@ fn draw_main_ui(
     bookmark: usize,
     preferences_mode: bool,
     bookmark_mode: bool,
-    bookmarks_list: &[(usize, String)], // NEW: Accept bookmarks list
-    selected_bookmark: usize, // NEW: Accept selected bookmark index
+    pause_mode: bool, // NEW: Accept pause_mode
+    bookmarks_list: &[(usize, String)],
+    selected_bookmark: usize,
 ) {
     const BGRND: Color = Color::Rgb(10, 34, 171); // Background color
     const TXT: Color = Color::Rgb(63, 252, 123); // Text color
@@ -80,43 +81,41 @@ fn draw_main_ui(
         f.render_widget(top_spacer, chunks[1]);
     }
 
-    if bookmark_mode {
-        let mut bookmark_items = Vec::new();
+    // **BOOKMARK/PAUSE UI (IN BOTTOM SPACER)**    
+    if pause_mode {
+        // Clear panel before displaying context
+        let start = current_word_index.saturating_sub(10);
+        let end = (current_word_index + 10).min(words.len());
+        let context_text = format!(
+            "[Context]\n... {} ...", words[start..end].join(" ")
+        );
 
-        // Add "Create Bookmark" as the first selectable item
-        let create_bookmark = Line::from(vec![
-            Span::styled(
-                "Create Bookmark",
-                if selected_bookmark == 0 {
-                    Style::default().fg(Color::Yellow).bg(Color::Green) // Highlighted row
-                } else {
-                    Style::default().fg(Color::White).bg(Color::Black) // Normal row
-                },
-            ),
-        ]);
-        bookmark_items.push(create_bookmark);
+        let context_block = Paragraph::new(context_text)
+            .block(Block::default().borders(Borders::ALL).title("Paused Context"))
+            .style(Style::default().fg(Color::Yellow).bg(Color::Black));
 
-        // Add existing bookmarks
+        f.render_widget(context_block, chunks[3]);
+    } else if bookmark_mode {
+        // Clear panel before displaying bookmarks
+        let mut bookmark_items = vec!["=> Create Bookmark".to_string()];
         for (i, (index, preview)) in bookmarks_list.iter().enumerate() {
-            let bookmark_entry = Line::from(vec![
-                Span::styled(
-                    format!("Word #{} ({})", index, preview),
-                    if i + 1 == selected_bookmark {
-                        Style::default().fg(Color::Yellow).bg(Color::Green) // Highlighted row
-                    } else {
-                        Style::default().fg(Color::White).bg(Color::Black) // Normal row
-                    },
-                ),
-            ]);
-            bookmark_items.push(bookmark_entry);
+            let selected = if i + 1 == selected_bookmark { "=>" } else { "  " };
+            bookmark_items.push(format!("{} Word #{} ({})", selected, index, preview));
         }
+        let bookmark_text = bookmark_items.join("\n");
 
-        let bookmark_block = Paragraph::new(Text::from(bookmark_items))
-            .block(Block::default().borders(Borders::ALL).title("Bookmarks"));
+        let bookmark_block = Paragraph::new(bookmark_text)
+            .block(Block::default().borders(Borders::ALL).title("Bookmarks"))
+            .style(Style::default().fg(Color::Yellow).bg(Color::Black));
 
-        f.render_widget(bookmark_block, chunks[3]); // Ensure correct chunk
+        f.render_widget(bookmark_block, chunks[3]);
+    } else {
+        // Default blank panel
+        let bottom_spacer = Block::default().style(Style::default().bg(BGRND));
+        f.render_widget(bottom_spacer, chunks[3]);
     }
 
+    
     
     // **Text Block**
     let word_display = if current_word_index < words.len() {
@@ -178,9 +177,6 @@ fn draw_main_ui(
 
 
 
-
-
-
 pub fn run_ui(mut speed: u64, mut chunk_size: usize, mut total_words: usize, mut words: Vec<String>) {
     let mut current_word_index = 0;
     let mut paused = false;
@@ -202,10 +198,10 @@ pub fn run_ui(mut speed: u64, mut chunk_size: usize, mut total_words: usize, mut
     let mut reading_time = 0.0;
     let mut bookmarks_list: Vec<(usize, String)> = vec![]; // Stores (word index, preview text)
     let mut selected_bookmark = 0; // Index of selected bookmark in the list
+    let mut pause_mode = false; // NEW: Toggles context display when paused
 
     
     // Initial draw of the main screen
-
     terminal.draw(|f| {
         draw_main_ui(
             f,
@@ -220,10 +216,12 @@ pub fn run_ui(mut speed: u64, mut chunk_size: usize, mut total_words: usize, mut
             bookmark,
             preferences_mode,
             bookmark_mode,
-            &bookmarks_list, // Pass bookmarks list
-            selected_bookmark, // Pass selected bookmark index
+            pause_mode, // Pass pause mode
+            &bookmarks_list,
+            selected_bookmark,
         )
     }).unwrap();
+
     
     loop {
         // Handle key events
@@ -285,7 +283,12 @@ pub fn run_ui(mut speed: u64, mut chunk_size: usize, mut total_words: usize, mut
                 } else {
                     // Normal UI Inputs
                     match code {
-                        KeyCode::Char(' ') => paused = !paused, // Toggle pause
+                        KeyCode::Char(' ') => {
+                            pause_mode = !pause_mode; // Toggle pause mode
+                            if pause_mode {
+                                bookmark_mode = false; // Ensure the bookmark panel is cleared
+                            }
+                        }
                         KeyCode::Char('p') => preferences_mode = true, // Open Preferences
                         KeyCode::Char('l') => {
                             // File Selector UI to select and load a file
@@ -359,8 +362,9 @@ pub fn run_ui(mut speed: u64, mut chunk_size: usize, mut total_words: usize, mut
                         bookmark,
                         preferences_mode,
                         bookmark_mode,
-                        &bookmarks_list, // Pass bookmarks list
-                        selected_bookmark, // Pass selected bookmark index
+                        pause_mode, // Pass pause mode
+                        &bookmarks_list,
+                        selected_bookmark,
                     )
                 }).unwrap();
                 
@@ -368,7 +372,7 @@ pub fn run_ui(mut speed: u64, mut chunk_size: usize, mut total_words: usize, mut
         }
 
         // Handle automatic word progression when not paused and not in preferences mode
-        if !paused && !preferences_mode && last_update.elapsed() >= word_delay {
+        if !pause_mode && !preferences_mode && last_update.elapsed() >= word_delay {
             last_update = Instant::now();
             if current_word_index < words.len() {
                 current_word_index += chunk_size;
@@ -379,24 +383,25 @@ pub fn run_ui(mut speed: u64, mut chunk_size: usize, mut total_words: usize, mut
             }
 
             // Redraw the main UI with updated state
-            terminal.draw(|f| {
-                draw_main_ui(
-                    f,
-                    current_word_index,
-                    chunk_size,
-                    &words,
-                    total_words,
-                    speed,
-                    words_read,
-                    reading_time,
-                    bookmarked,
-                    bookmark,
-                    preferences_mode,
-                    bookmark_mode,
-                    &bookmarks_list, // Pass bookmarks list
-                    selected_bookmark, // Pass selected bookmark index
-                )
-            }).unwrap();
+                terminal.draw(|f| {
+                    draw_main_ui(
+                        f,
+                        current_word_index,
+                        chunk_size,
+                        &words,
+                        total_words,
+                        speed,
+                        words_read,
+                        reading_time,
+                        bookmarked,
+                        bookmark,
+                        preferences_mode,
+                        bookmark_mode,
+                        pause_mode, // Pass pause mode
+                        &bookmarks_list,
+                        selected_bookmark,
+                    )
+                }).unwrap();
         }
     }
 
