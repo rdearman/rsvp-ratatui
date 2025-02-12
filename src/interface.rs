@@ -98,19 +98,20 @@ fn draw_main_ui(
     if bookmark_mode {
         let mut bookmark_items = vec!["=> Create Bookmark".to_string()]; // Default selection
 
-        // Add existing bookmarks to the list
+        // Ensure existing bookmarks are listed
         for (i, (index, preview)) in bookmarks_list.iter().enumerate() {
             let selected = if i + 1 == selected_bookmark { "=>" } else { "  " };
             bookmark_items.push(format!("{} Word #{} ({})", selected, index, preview));
         }
 
+        // Join all bookmark entries into a formatted string
         let bookmark_text = bookmark_items.join("\n");
 
         let bookmark_block = Paragraph::new(bookmark_text)
             .block(Block::default().borders(Borders::ALL).title("Bookmarks"))
             .style(Style::default().fg(Color::Yellow).bg(Color::Black));
 
-        f.render_widget(bookmark_block, chunks[3]); // Use Bottom Spacer
+        f.render_widget(bookmark_block, chunks[3]); // Ensure correct chunk
     } else {
         let bottom_spacer = Block::default().style(Style::default().bg(BGRND));
         f.render_widget(bottom_spacer, chunks[3]);
@@ -311,39 +312,14 @@ pub fn run_ui(mut speed: u64, mut chunk_size: usize, mut total_words: usize, mut
                             }
                         }
                         KeyCode::Char('b') => {
-                            if !consume_next_event {
-                                bookmarked = !bookmarked; // Toggle bookmark state
-                                if bookmarked {
-                                    bookmark = current_word_index.min(words.len());
-                                } else {
-                                    current_word_index = bookmark.min(words.len());
-                                    bookmark = 0;
-                                    words_read = current_word_index;
-                                    terminal.clear().unwrap();
-
-                                    terminal.draw(|f| {
-                                        draw_main_ui(
-                                            f,
-                                            current_word_index,
-                                            chunk_size,
-                                            &words,
-                                            total_words,
-                                            speed,
-                                            words_read,
-                                            reading_time,
-                                            bookmarked,
-                                            bookmark,
-                                            preferences_mode,
-                                            bookmark_mode,
-                                            &bookmarks_list, // Pass bookmarks list
-                                            selected_bookmark, // Pass selected bookmark index
-                                        )
-                                    }).unwrap();
-
-                                }
-                                consume_next_event = true; // Set debounce flag
+                            if bookmark_mode {
+                                bookmark_mode = false; // Close menu
+                            } else {
+                                bookmark_mode = true;  // Open menu
+                                selected_bookmark = 0; // Reset selection to "Create Bookmark"
                             }
                         }
+                      
                         KeyCode::Char('q') => {
                             // Restore terminal and exit gracefully
                             terminal::disable_raw_mode().unwrap();
