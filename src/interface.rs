@@ -20,21 +20,6 @@ use std::fs::OpenOptions;
 use crate::utilities::file_selector_ui;
 
 
-/*
-fn draw_main_ui(
-    f: &mut Frame,
-    current_word_index: usize,
-    chunk_size: usize,
-    words: &[String],
-    total_words: usize,
-    speed: u64,
-    words_read: usize,
-    reading_time: f64,
-    bookmarked: bool,
-    bookmark: usize,
-    preferences_mode: bool, // NEW: Toggle preferences UI
-    bookmark_mode: bool, // NEW: Toggle bookmark UI
- */
 fn draw_main_ui(
     f: &mut Frame,
     current_word_index: usize,
@@ -96,25 +81,40 @@ fn draw_main_ui(
     }
 
     if bookmark_mode {
-        let mut bookmark_items = vec!["=> Create Bookmark".to_string()]; // Default selection
+        let mut bookmark_items = Vec::new();
 
-        // Ensure existing bookmarks are listed
+        // Add "Create Bookmark" as the first selectable item
+        let create_bookmark = Line::from(vec![
+            Span::styled(
+                "Create Bookmark",
+                if selected_bookmark == 0 {
+                    Style::default().fg(Color::Yellow).bg(Color::Green) // Highlighted row
+                } else {
+                    Style::default().fg(Color::White).bg(Color::Black) // Normal row
+                },
+            ),
+        ]);
+        bookmark_items.push(create_bookmark);
+
+        // Add existing bookmarks
         for (i, (index, preview)) in bookmarks_list.iter().enumerate() {
-            let selected = if i + 1 == selected_bookmark { "=>" } else { "  " };
-            bookmark_items.push(format!("{} Word #{} ({})", selected, index, preview));
+            let bookmark_entry = Line::from(vec![
+                Span::styled(
+                    format!("Word #{} ({})", index, preview),
+                    if i + 1 == selected_bookmark {
+                        Style::default().fg(Color::Yellow).bg(Color::Green) // Highlighted row
+                    } else {
+                        Style::default().fg(Color::White).bg(Color::Black) // Normal row
+                    },
+                ),
+            ]);
+            bookmark_items.push(bookmark_entry);
         }
 
-        // Join all bookmark entries into a formatted string
-        let bookmark_text = bookmark_items.join("\n");
-
-        let bookmark_block = Paragraph::new(bookmark_text)
-            .block(Block::default().borders(Borders::ALL).title("Bookmarks"))
-            .style(Style::default().fg(Color::Yellow).bg(Color::Black));
+        let bookmark_block = Paragraph::new(Text::from(bookmark_items))
+            .block(Block::default().borders(Borders::ALL).title("Bookmarks"));
 
         f.render_widget(bookmark_block, chunks[3]); // Ensure correct chunk
-    } else {
-        let bottom_spacer = Block::default().style(Style::default().bg(BGRND));
-        f.render_widget(bottom_spacer, chunks[3]);
     }
 
     
