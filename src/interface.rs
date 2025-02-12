@@ -33,6 +33,8 @@ fn draw_main_ui(
     bookmarked: bool,
     bookmark: usize,
     preferences_mode: bool, // NEW: Toggle preferences UI
+    bookmark_mode: bool, // NEW: Toggle bookmark UI
+
 ) {
     const BGRND: Color = Color::Rgb(10, 34, 171); // Background color
     const TXT: Color = Color::Rgb(63, 252, 123); // Text color
@@ -46,7 +48,7 @@ fn draw_main_ui(
             Constraint::Percentage(5),  // Quick Keys
             Constraint::Percentage(if preferences_mode { 31 } else { 31 }), // Top Spacer (shrinks when preferences are active)
             Constraint::Percentage(8),  // Text Block
-            Constraint::Percentage(28), // Bottom Spacer
+            Constraint::Percentage(if bookmark_mode {28} else {28} ), // Bottom Spacer
             Constraint::Percentage(26), // Stats & Progress
         ])
         .split(size);
@@ -60,6 +62,7 @@ fn draw_main_ui(
         .style(Style::default().fg(SCRTEXT).bg(BGRND));
     f.render_widget(quick_keys, chunks[0]);
 
+  
     // **PREFERENCES UI (IN TOP SPACER)**
     if preferences_mode {
         let preferences_text = format!(
@@ -77,6 +80,24 @@ fn draw_main_ui(
         f.render_widget(top_spacer, chunks[1]);
     }
 
+    // **PREFERENCESBOOKMARK UI (IN TOP SPACER)**
+    if bookmark_mode {
+        let bookmark_text = format!(
+            "[Bookmarks]:\nCreate Bookmark\n{}", "Place Holder for Bookmarks" // bookmark_list
+        );
+
+        let bookmark_block = Paragraph::new(bookmark_text)
+            .block(Block::default().borders(Borders::ALL).title("Bookmarks"))
+            .style(Style::default().fg(Color::Yellow).bg(Color::Black));
+        
+        f.render_widget(bookmark_block, chunks[1]); // Use the Top Spacer
+    } else {
+        let top_spacer = Block::default().style(Style::default().bg(BGRND));
+        f.render_widget(top_spacer, chunks[1]);
+    }
+
+
+    
     // **Text Block**
     let word_display = if current_word_index < words.len() {
         words[current_word_index..current_word_index + chunk_size.min(words.len() - current_word_index)].join(" ")
@@ -144,6 +165,7 @@ pub fn run_ui(mut speed: u64, mut chunk_size: usize, mut total_words: usize, mut
     let mut current_word_index = 0;
     let mut paused = false;
     let mut preferences_mode = false; // NEW: Toggle preferences mode
+    let mut bookmark_mode = false; // NEW: Toggle preferences mode
     let mut bookmark = 0;
     let mut bookmarked = false;
     let mut consume_next_event = false; // Debounce flag for key events
@@ -173,6 +195,8 @@ pub fn run_ui(mut speed: u64, mut chunk_size: usize, mut total_words: usize, mut
             bookmarked,
             bookmark,
             preferences_mode, // NEW: Pass preferences mode
+            bookmark_mode, // NEW: Pass preferences mode
+
         )
     }).unwrap();
 
@@ -252,6 +276,7 @@ pub fn run_ui(mut speed: u64, mut chunk_size: usize, mut total_words: usize, mut
                                             bookmarked,
                                             bookmark,
                                             preferences_mode,
+                                            bookmark_mode,
                                         )
                                     }).unwrap();
                                 }
@@ -296,6 +321,7 @@ pub fn run_ui(mut speed: u64, mut chunk_size: usize, mut total_words: usize, mut
                         bookmarked,
                         bookmark,
                         preferences_mode, // NEW: Pass preferences mode
+                        bookmark_mode
                     )
                 }).unwrap();
             }
@@ -326,6 +352,7 @@ pub fn run_ui(mut speed: u64, mut chunk_size: usize, mut total_words: usize, mut
                     bookmarked,
                     bookmark,
                     preferences_mode,
+                    bookmark_mode,
                 )
             }).unwrap();
         }
