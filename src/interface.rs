@@ -20,7 +20,7 @@ use std::fs::OpenOptions;
 use crate::utilities::file_selector_ui;
 
 
-
+/*
 fn draw_main_ui(
     f: &mut Frame,
     current_word_index: usize,
@@ -34,7 +34,22 @@ fn draw_main_ui(
     bookmark: usize,
     preferences_mode: bool, // NEW: Toggle preferences UI
     bookmark_mode: bool, // NEW: Toggle bookmark UI
-
+ */
+fn draw_main_ui(
+    f: &mut Frame,
+    current_word_index: usize,
+    chunk_size: usize,
+    words: &[String],
+    total_words: usize,
+    speed: u64,
+    words_read: usize,
+    reading_time: f64,
+    bookmarked: bool,
+    bookmark: usize,
+    preferences_mode: bool,
+    bookmark_mode: bool,
+    bookmarks_list: &[(usize, String)], // NEW: Accept bookmarks list
+    selected_bookmark: usize, // NEW: Accept selected bookmark index
 ) {
     const BGRND: Color = Color::Rgb(10, 34, 171); // Background color
     const TXT: Color = Color::Rgb(63, 252, 123); // Text color
@@ -80,22 +95,26 @@ fn draw_main_ui(
         f.render_widget(top_spacer, chunks[1]);
     }
 
-    // **PREFERENCESBOOKMARK UI (IN TOP SPACER)**
     if bookmark_mode {
-        let bookmark_text = format!(
-            "[Bookmarks]:\nCreate Bookmark\n{}", "Place Holder for Bookmarks" // bookmark_list
-        );
+        let mut bookmark_items = vec!["=> Create Bookmark".to_string()]; // Default selection
+
+        // Add existing bookmarks to the list
+        for (i, (index, preview)) in bookmarks_list.iter().enumerate() {
+            let selected = if i + 1 == selected_bookmark { "=>" } else { "  " };
+            bookmark_items.push(format!("{} Word #{} ({})", selected, index, preview));
+        }
+
+        let bookmark_text = bookmark_items.join("\n");
 
         let bookmark_block = Paragraph::new(bookmark_text)
             .block(Block::default().borders(Borders::ALL).title("Bookmarks"))
             .style(Style::default().fg(Color::Yellow).bg(Color::Black));
-        
-        f.render_widget(bookmark_block, chunks[1]); // Use the Top Spacer
-    } else {
-        let top_spacer = Block::default().style(Style::default().bg(BGRND));
-        f.render_widget(top_spacer, chunks[1]);
-    }
 
+        f.render_widget(bookmark_block, chunks[3]); // Use Bottom Spacer
+    } else {
+        let bottom_spacer = Block::default().style(Style::default().bg(BGRND));
+        f.render_widget(bottom_spacer, chunks[3]);
+    }
 
     
     // **Text Block**
@@ -180,8 +199,12 @@ pub fn run_ui(mut speed: u64, mut chunk_size: usize, mut total_words: usize, mut
 
     let mut words_read = 0;
     let mut reading_time = 0.0;
+    let mut bookmarks_list: Vec<(usize, String)> = vec![]; // Stores (word index, preview text)
+    let mut selected_bookmark = 0; // Index of selected bookmark in the list
 
+    
     // Initial draw of the main screen
+
     terminal.draw(|f| {
         draw_main_ui(
             f,
@@ -194,12 +217,13 @@ pub fn run_ui(mut speed: u64, mut chunk_size: usize, mut total_words: usize, mut
             reading_time,
             bookmarked,
             bookmark,
-            preferences_mode, // NEW: Pass preferences mode
-            bookmark_mode, // NEW: Pass preferences mode
-
+            preferences_mode,
+            bookmark_mode,
+            &bookmarks_list, // Pass bookmarks list
+            selected_bookmark, // Pass selected bookmark index
         )
     }).unwrap();
-
+    
     loop {
         // Handle key events
         if event::poll(Duration::from_millis(10)).unwrap() {
@@ -209,6 +233,39 @@ pub fn run_ui(mut speed: u64, mut chunk_size: usize, mut total_words: usize, mut
                     consume_next_event = false; // Reset debounce flag
                     continue; // Skip this event
                 }
+
+                if bookmark_mode {
+                    match code {
+                        KeyCode::Up => {
+                            if selected_bookmark > 0 {
+                                selected_bookmark -= 1;
+                            }
+                        }
+                        KeyCode::Down => {
+                            if selected_bookmark < bookmarks_list.len() {
+                                selected_bookmark += 1;
+                            }
+                        }
+                        KeyCode::Enter => {
+                            if selected_bookmark == 0 {
+                                // Create a new bookmark
+                                let preview = words
+                                    .get(current_word_index..(current_word_index + 5).min(words.len()))
+                                    .unwrap_or(&[])
+                                    .join(" ");
+                                bookmarks_list.push((current_word_index, preview));
+                            } else {
+                                // Jump to selected bookmark
+                                current_word_index = bookmarks_list[selected_bookmark - 1].0;
+                            }
+                            bookmark_mode = false; // Close menu after selection
+                        }
+                        KeyCode::Esc => {
+                            bookmark_mode = false; // Exit bookmarks menu
+                        }
+                        _ => {}
+                    }
+                } 
 
                 if preferences_mode {
                     // Handling Preferences Mode Inputs
@@ -263,6 +320,7 @@ pub fn run_ui(mut speed: u64, mut chunk_size: usize, mut total_words: usize, mut
                                     bookmark = 0;
                                     words_read = current_word_index;
                                     terminal.clear().unwrap();
+
                                     terminal.draw(|f| {
                                         draw_main_ui(
                                             f,
@@ -277,8 +335,11 @@ pub fn run_ui(mut speed: u64, mut chunk_size: usize, mut total_words: usize, mut
                                             bookmark,
                                             preferences_mode,
                                             bookmark_mode,
+                                            &bookmarks_list, // Pass bookmarks list
+                                            selected_bookmark, // Pass selected bookmark index
                                         )
                                     }).unwrap();
+
                                 }
                                 consume_next_event = true; // Set debounce flag
                             }
@@ -320,10 +381,13 @@ pub fn run_ui(mut speed: u64, mut chunk_size: usize, mut total_words: usize, mut
                         reading_time,
                         bookmarked,
                         bookmark,
-                        preferences_mode, // NEW: Pass preferences mode
-                        bookmark_mode
+                        preferences_mode,
+                        bookmark_mode,
+                        &bookmarks_list, // Pass bookmarks list
+                        selected_bookmark, // Pass selected bookmark index
                     )
                 }).unwrap();
+                
             }
         }
 
@@ -353,6 +417,8 @@ pub fn run_ui(mut speed: u64, mut chunk_size: usize, mut total_words: usize, mut
                     bookmark,
                     preferences_mode,
                     bookmark_mode,
+                    &bookmarks_list, // Pass bookmarks list
+                    selected_bookmark, // Pass selected bookmark index
                 )
             }).unwrap();
         }
