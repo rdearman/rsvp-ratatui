@@ -17,7 +17,7 @@ use xml::reader::{EventReader, XmlEvent};
 use ratatui::layout::{Constraint, Direction, Layout};
 
 /// List of supported file types
-const SUPPORTED_FILE_TYPES: &[&str] = &["pdf", "epub", "docx", "odt", "txt", "html", "htm", "md"];
+const SUPPORTED_FILE_TYPES: &[&str] = &["pdf",  "docx", "odt", "txt", "html", "htm", "md"]; // Removed "epub" because it was crashing
 
 
 pub fn file_selector_ui() -> Option<String> {
@@ -77,24 +77,25 @@ pub fn file_selector_ui() -> Option<String> {
                     let selected_path = current_dir.join(selected);
 
                     if selected == ".." {
-                        // Move up one directory
                         if let Some(parent) = current_dir.parent() {
                             current_dir = parent.to_path_buf();
                             file_entries = get_file_entries(&current_dir);
                             selected_index = 0;
                         }
                     } else if selected_path.is_dir() {
-                        // Move into the selected directory
                         current_dir = selected_path;
                         file_entries = get_file_entries(&current_dir);
                         selected_index = 0;
                     } else {
+                        // Close UI before returning the file
                         terminal.clear().unwrap();
+                        terminal::disable_raw_mode().unwrap();
                         return Some(selected_path.to_string_lossy().into_owned());
                     }
                 }
                 KeyCode::Esc => {
                     terminal.clear().unwrap();
+                    terminal::disable_raw_mode().unwrap();
                     return None;
                 }
                 _ => {}
@@ -102,6 +103,7 @@ pub fn file_selector_ui() -> Option<String> {
         }
     }
 }
+
 
 /// Helper function to get entries of a directory
 fn get_file_entries(dir: &std::path::Path) -> Vec<String> {

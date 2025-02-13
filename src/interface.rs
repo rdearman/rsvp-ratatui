@@ -181,28 +181,26 @@ fn draw_main_ui(
 pub fn run_ui(mut speed: u64, mut chunk_size: usize, mut total_words: usize, mut words: Vec<String>) {
     let mut current_word_index = 0;
     let mut paused = false;
-    let mut preferences_mode = false; // NEW: Toggle preferences mode
-    let mut bookmark_mode = false; // NEW: Toggle preferences mode
+    let mut preferences_mode = false;
+    let mut bookmark_mode = false;
     let mut bookmark = 0;
     let mut bookmarked = false;
-    let mut consume_next_event = false; // Debounce flag for key events
+    let mut consume_next_event = false;
     let mut word_delay = Duration::from_millis(60000 / speed);
     let mut last_update = Instant::now();
 
-    terminal::enable_raw_mode().unwrap();
     let mut stdout = stdout();
+    terminal::enable_raw_mode().unwrap();
     stdout.execute(terminal::EnterAlternateScreen).unwrap();
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend).unwrap();
 
     let mut words_read = 0;
     let mut reading_time = 0.0;
-    let mut bookmarks_list: Vec<(usize, String)> = vec![]; // Stores (word index, preview text)
-    let mut selected_bookmark = 0; // Index of selected bookmark in the list
-    let mut pause_mode = false; // NEW: Toggles context display when paused
+    let mut bookmarks_list: Vec<(usize, String)> = vec![];
+    let mut selected_bookmark = 0;
+    let mut pause_mode = false;
 
-    
-    // Initial draw of the main screen
     terminal.draw(|f| {
         draw_main_ui(
             f,
@@ -217,21 +215,18 @@ pub fn run_ui(mut speed: u64, mut chunk_size: usize, mut total_words: usize, mut
             bookmark,
             preferences_mode,
             bookmark_mode,
-            pause_mode, // Pass pause mode
+            pause_mode,
             &bookmarks_list,
             selected_bookmark,
         )
     }).unwrap();
 
-    
     loop {
-        // Handle key events
         if event::poll(Duration::from_millis(10)).unwrap() {
             if let Event::Key(KeyEvent { code, .. }) = event::read().unwrap() {
-                // Skip event if debounce flag is set
                 if consume_next_event {
-                    consume_next_event = false; // Reset debounce flag
-                    continue; // Skip this event
+                    consume_next_event = false;
+                    continue;
                 }
 
                 if bookmark_mode {
@@ -248,99 +243,78 @@ pub fn run_ui(mut speed: u64, mut chunk_size: usize, mut total_words: usize, mut
                         }
                         KeyCode::Enter => {
                             if selected_bookmark == 0 {
-                                // Create a new bookmark
                                 let preview = words
                                     .get(current_word_index..(current_word_index + 5).min(words.len()))
                                     .unwrap_or(&[])
                                     .join(" ");
                                 bookmarks_list.push((current_word_index, preview));
                             } else {
-                                // Jump to selected bookmark
                                 current_word_index = bookmarks_list[selected_bookmark - 1].0;
                             }
-                            bookmark_mode = false; // Close menu after selection
+                            bookmark_mode = false;
                         }
-                        KeyCode::Esc => {
-                            bookmark_mode = false; // Exit bookmarks menu
-                        }
+                        KeyCode::Esc => bookmark_mode = false,
                         _ => {}
                     }
-                } 
+                }
 
                 if preferences_mode {
-                    // Handling Preferences Mode Inputs
                     match code {
-                        KeyCode::Up => speed += 10, // Increase speed
-                        KeyCode::Down => speed = speed.saturating_sub(10), // Decrease speed
-                        KeyCode::Right => chunk_size += 1, // Increase chunk size
-                        KeyCode::Left => chunk_size = chunk_size.saturating_sub(1), // Decrease chunk size
+                        KeyCode::Up => speed += 10,
+                        KeyCode::Down => speed = speed.saturating_sub(10),
+                        KeyCode::Right => chunk_size += 1,
+                        KeyCode::Left => chunk_size = chunk_size.saturating_sub(1),
                         KeyCode::Enter => {
                             save_settings(speed, chunk_size);
-                            preferences_mode = false; // Exit preferences mode after saving
+                            preferences_mode = false;
                         }
-                        KeyCode::Esc => preferences_mode = false, // Exit preferences mode without saving
+                        KeyCode::Esc => preferences_mode = false,
                         _ => {}
                     }
                 } else {
-                    // Normal UI Inputs
                     match code {
-                        KeyCode::Char(' ') => {
-                            pause_mode = !pause_mode; // Toggle pause mode
-                            if pause_mode {
-                                bookmark_mode = false; // Ensure the bookmark panel is cleared
-                            }
-                        }
-                        KeyCode::Char('p') => preferences_mode = true, // Open Preferences
+                        KeyCode::Char(' ') => pause_mode = !pause_mode,
+                        KeyCode::Char('p') => preferences_mode = true,
                         KeyCode::Char('l') => {
-                            // File Selector UI to select and load a file
-                            let selected_words = file_selector_ui(); // Get words directly
-                            if selected_words.as_ref().map_or(false, |s| !s.is_empty()) {
-                                let total_words = selected_words.as_ref().map(|s| s.split_whitespace().count()).unwrap_or(0);
-                                let current_word_index = 0;
+                            if let Some(selected_file) = file_selector_ui() {
+                                if let Ok(content) = std::fs::read_to_string(&selected_file) {
+                                    let words = content.split_whitespace().map(String::from).collect::<Vec<_>>();
+                                    let total_words = words.len();
+                                    let start_position = 0;
 
-                                // Restart the UI with the new file
-                                terminal::disable_raw_mode().unwrap();
-                                terminal.backend_mut().execute(LeaveAlternateScreen).unwrap();
-                                drop(terminal);
+                                    // Fully reset UI before restarting
+                                    terminal::disable_raw_mode().unwrap();
+                                    terminal.backend_mut().execute(LeaveAlternateScreen).unwrap();
+                                    drop(terminal);
 
-                                let words = selected_words
-                                    .map(|s| s.split_whitespace().map(String::from).collect::<Vec<_>>())
-                                    .unwrap_or_else(Vec::new);
-
-                                run_ui(speed, chunk_size, total_words, words);
-
-                                return;
-                            } else {
-                                println!("No file selected.");
+                                    // Relaunch with the new file
+                                    run_ui(speed, chunk_size, total_words, words);
+                                    return; // Exit the current loop to prevent multiple instances
+                                } else {
+                                    println!("Failed to read the selected file.");
+                                }
                             }
-
                         }
                         KeyCode::Char('b') => {
                             if bookmark_mode {
-                                bookmark_mode = false; // Close menu
+                                bookmark_mode = false;
                             } else {
-                                bookmark_mode = true;  // Open menu
-                                selected_bookmark = 0; // Reset selection to "Create Bookmark"
+                                bookmark_mode = true;
+                                selected_bookmark = 0;
                             }
                         }
-                      
                         KeyCode::Char('q') => {
-                            // Restore terminal and exit gracefully
                             terminal::disable_raw_mode().unwrap();
                             terminal.backend_mut().execute(LeaveAlternateScreen).unwrap();
-                            terminal.clear().unwrap(); // Ensure the terminal is completely cleared
+                            terminal.clear().unwrap();
                             break;
                         }
-                        KeyCode::Up => speed += 10, // Increase speed
-                        KeyCode::Down => speed = speed.saturating_sub(10), // Decrease speed
-                        KeyCode::PageUp => speed += 100, // Large speed increase
-                        KeyCode::PageDown => speed = speed.saturating_sub(100), // Large speed decrease
-                        KeyCode::Right => {
-                            current_word_index = (current_word_index + chunk_size).min(words.len());
-                        }
-                        KeyCode::Left => {
-                            current_word_index = current_word_index.saturating_sub(chunk_size);
-                        }
+                        KeyCode::Up => speed += 10,
+                        KeyCode::Down => speed = speed.saturating_sub(10),
+                        KeyCode::PageUp => speed += 100,
+                        KeyCode::PageDown => speed = speed.saturating_sub(100),
+                        KeyCode::Right => current_word_index = (current_word_index + chunk_size).min(words.len()),
+                        KeyCode::Left => current_word_index = current_word_index.saturating_sub(chunk_size),
                         KeyCode::Char(c) if c.is_digit(10) => {
                             chunk_size = c.to_digit(10).unwrap() as usize;
                         }
@@ -348,7 +322,6 @@ pub fn run_ui(mut speed: u64, mut chunk_size: usize, mut total_words: usize, mut
                     }
                 }
 
-                // Redraw UI after key input
                 terminal.draw(|f| {
                     draw_main_ui(
                         f,
@@ -363,16 +336,14 @@ pub fn run_ui(mut speed: u64, mut chunk_size: usize, mut total_words: usize, mut
                         bookmark,
                         preferences_mode,
                         bookmark_mode,
-                        pause_mode, // Pass pause mode
+                        pause_mode,
                         &bookmarks_list,
                         selected_bookmark,
                     )
                 }).unwrap();
-                
             }
         }
 
-        // Handle automatic word progression when not paused and not in preferences mode
         if !pause_mode && !preferences_mode && last_update.elapsed() >= word_delay {
             last_update = Instant::now();
             if current_word_index < words.len() {
@@ -380,33 +351,31 @@ pub fn run_ui(mut speed: u64, mut chunk_size: usize, mut total_words: usize, mut
                 words_read += chunk_size;
                 reading_time += word_delay.as_secs_f64();
             } else {
-                break; // End of words
+                break;
             }
 
-            // Redraw the main UI with updated state
-                terminal.draw(|f| {
-                    draw_main_ui(
-                        f,
-                        current_word_index,
-                        chunk_size,
-                        &words,
-                        total_words,
-                        speed,
-                        words_read,
-                        reading_time,
-                        bookmarked,
-                        bookmark,
-                        preferences_mode,
-                        bookmark_mode,
-                        pause_mode, // Pass pause mode
-                        &bookmarks_list,
-                        selected_bookmark,
-                    )
-                }).unwrap();
+            terminal.draw(|f| {
+                draw_main_ui(
+                    f,
+                    current_word_index,
+                    chunk_size,
+                    &words,
+                    total_words,
+                    speed,
+                    words_read,
+                    reading_time,
+                    bookmarked,
+                    bookmark,
+                    preferences_mode,
+                    bookmark_mode,
+                    pause_mode,
+                    &bookmarks_list,
+                    selected_bookmark,
+                )
+            }).unwrap();
         }
     }
 
-    // Restore terminal state
     terminal::disable_raw_mode().unwrap();
     terminal.backend_mut().execute(LeaveAlternateScreen).unwrap();
 }
