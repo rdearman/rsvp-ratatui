@@ -16,3 +16,4 @@ scraper = "*"
 zip = "0.6"
 lopdf = "0.32"
 xml-rs = "0.8"     # For ODT XML parsing
+serde_json = "*"

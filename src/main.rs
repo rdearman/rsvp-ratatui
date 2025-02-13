@@ -2,14 +2,18 @@ mod interface;
 mod utilities;
 use clap::{Arg, Command};
 use crate::utilities::{load_settings, save_settings,file_selector_ui, read_file_content};
+use std::collections::HashMap;
+use serde_json::{json, Value};
+use std::fs;
+use std::path::Path;
+
 
 fn main() {
-    // Load saved preferences
-    let (saved_speed, saved_chunk_size) = load_settings();
+    // Load settings from JSON
+    let (global_speed, global_chunk_size, mut book_data) = load_settings(); // ✅ Fix: Ensure book_data is loaded
 
-    // Parse command-line arguments
     let matches = Command::new("RSVP")
-        .version("1.0")
+        .version("1.2.0")
         .author("Your Name <you@example.com>")
         .about("Displays one word at a time in the terminal")
         .arg(
@@ -35,32 +39,45 @@ fn main() {
         )
         .get_matches();
 
-    // Determine speed and chunk size with priority: Command-line > Saved Preferences > Defaults
-    let speed: u64 = matches
-        .get_one::<String>("speed")
-        .and_then(|s| s.parse().ok())
-        .or(saved_speed)
-        .unwrap_or(250); // Default speed
+    let input_file = matches.get_one::<String>("input").cloned()
+        .or_else(|| file_selector_ui());
 
-    let chunk_size: usize = matches
-        .get_one::<String>("chunk_size")
-        .and_then(|cs| cs.parse().ok())
-        .or(saved_chunk_size)
-        .unwrap_or(1); // Default chunk size
+    if let Some(file_path) = input_file {
+        let absolute_path = fs::canonicalize(Path::new(&file_path))
+            .unwrap_or_else(|_| Path::new(&file_path).to_path_buf());
 
-    // Save updated settings
-    save_settings(speed, chunk_size);
+        let absolute_path_str = absolute_path.to_string_lossy().to_string();
 
-    let words = if let Some(input_file) = matches.get_one::<String>("input") {
-        read_file_content(input_file)
-    } else {
-        file_selector_ui()
-            .map(|s| s.split_whitespace().map(String::from).collect::<Vec<_>>())
-            .unwrap_or_else(Vec::new)
-    };
+        let words = read_file_content(&absolute_path_str);
+        let total_words = words.len();
 
-    let total_words = words.len();
+        // ✅ Fix: Restore book data handling
+        let book_settings = book_data.get(&absolute_path_str).and_then(|b| b.as_object());
+        let speed = matches
+            .get_one::<String>("speed")
+            .and_then(|s| s.parse().ok())
+            .or_else(|| book_settings.and_then(|b| b.get("speed")?.as_u64()))
+            .unwrap_or(global_speed);
 
-    // Pass words to the UI
-    interface::run_ui(speed, chunk_size, total_words, words);
+        let chunk_size = matches
+            .get_one::<String>("chunk_size")
+            .and_then(|cs| cs.parse().ok())
+            .or_else(|| book_settings.and_then(|b| b.get("chunk_size")?.as_u64()).map(|cs| cs as usize))
+            .unwrap_or(global_chunk_size);
+
+        let _last_position = book_settings
+            .and_then(|b| b.get("last_position")?.as_u64())
+            .unwrap_or(0) as usize;
+
+        // ✅ Fix: Ensure correct arguments to run_ui()
+        let final_position = interface::run_ui(speed, chunk_size, total_words, words, &mut book_data);
+
+        book_data.entry(absolute_path_str.clone()).or_insert_with(|| json!({}));
+        if let Some(book) = book_data.get_mut(&absolute_path_str) {
+            book["last_position"] = json!(final_position);
+            book["speed"] = json!(speed);
+            book["chunk_size"] = json!(chunk_size);
+        }
+        save_settings(global_speed, global_chunk_size, book_data, None, None);
+    }
 }

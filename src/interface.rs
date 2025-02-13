@@ -19,9 +19,10 @@ use crate::utilities::save_settings;
 use ratatui::{Frame}; // , backend::Backend};
 //use std::fs::OpenOptions;
 use crate::utilities::file_selector_ui;
+use std::collections::HashMap;
+use serde_json::Value;
 
-
-fn draw_main_ui(
+fn draw_main_ui (
     f: &mut Frame,
     current_word_index: usize,
     chunk_size: usize,
@@ -177,8 +178,14 @@ fn draw_main_ui(
 }
 
 
+pub fn run_ui(
+    mut speed: u64,
+    mut chunk_size: usize,
+    mut total_words: usize,
+    mut words: Vec<String>,
+    book_data: &mut HashMap<String, Value>, // ✅ Pass by reference
+) -> usize {
 
-pub fn run_ui(mut speed: u64, mut chunk_size: usize, mut total_words: usize, mut words: Vec<String>) {
     let mut current_word_index = 0;
     let mut paused = false;
     let mut preferences_mode = false;
@@ -265,7 +272,7 @@ pub fn run_ui(mut speed: u64, mut chunk_size: usize, mut total_words: usize, mut
                         KeyCode::Right => chunk_size += 1,
                         KeyCode::Left => chunk_size = chunk_size.saturating_sub(1),
                         KeyCode::Enter => {
-                            save_settings(speed, chunk_size);
+                            save_settings(speed, chunk_size, book_data.clone(), None, None);
                             preferences_mode = false;
                         }
                         KeyCode::Esc => preferences_mode = false,
@@ -288,8 +295,8 @@ pub fn run_ui(mut speed: u64, mut chunk_size: usize, mut total_words: usize, mut
                                     drop(terminal);
 
                                     // Relaunch with the new file
-                                    run_ui(speed, chunk_size, total_words, words);
-                                    return; // Exit the current loop to prevent multiple instances
+                                    run_ui(speed, chunk_size, total_words, words, book_data);
+                                    return current_word_index; // ✅ Correct return type
                                 } else {
                                     println!("Failed to read the selected file.");
                                 }
@@ -378,4 +385,6 @@ pub fn run_ui(mut speed: u64, mut chunk_size: usize, mut total_words: usize, mut
 
     terminal::disable_raw_mode().unwrap();
     terminal.backend_mut().execute(LeaveAlternateScreen).unwrap();
+    return current_word_index;
 }
+
