@@ -1,4 +1,3 @@
-
 # RSVP Program
 
 Welcome to **RSVP** (Rapid Serial Visual Presentation)! This program allows users to read text files by displaying words or chunks of words one at a time in the terminal at a user-defined speed. Designed for both programmers and non-programmers, RSVP provides an efficient way to speed-read and manage text content.
@@ -19,6 +18,22 @@ Welcome to **RSVP** (Rapid Serial Visual Presentation)! This program allows user
   - `[PgUp]`/`[PgDn]` to adjust speed by 100 WPM
   - `[1-9]` to set chunk size
   - `[←]`/`[→]` to skip backward or forward by 5 words
+  - `[L]` to load a new file
+  - `[P]` to open preferences
+  - `[B]` to bookmark the current position
+
+---
+
+## 🚀 New and Improved Features
+
+- **Bookmark Support**: Mark a position in a file and return to it later.
+- **Expanded File Format Support**: Load and read additional file types:
+  - **Plain Text (`.txt`)**
+  - **PDF (`.pdf`)**
+  - **Microsoft Word (`.docx`)**
+  - **HTML (`.html`)**
+- **File Selector UI**: Easily browse and select files using a built-in file picker.
+- **Enhanced Visualisation**: Improved UI with colour-coded sections for readability.
 
 ---
 
@@ -48,6 +63,7 @@ Welcome to **RSVP** (Rapid Serial Visual Presentation)! This program allows user
      ```bash
      ./target/release/rsvp -i path/to/your/file.txt
      ```
+   - You can also load a file interactively using `[L]`.
 
 ### For Programmers
 
@@ -69,12 +85,12 @@ Welcome to **RSVP** (Rapid Serial Visual Presentation)! This program allows user
 
 ---
 
-## 📜 Planned Features
+## 💜 Planned Features
 
 - **Save Reading Progress:** Automatically save your position in the file and allow resuming from where you left off.
-- **Improved File Management:** Add a file selector interface for easier file loading.
-- **Enhanced Visualisation:** Display formatted text or highlight keywords for better readability.
-- **Mobile/GUI Version:** Expand to a graphical interface or mobile app.
+- **More File Formats:** Expand support to EPUB and Markdown files.
+- **Mobile/GUI Version:** Develop a graphical version for desktop and mobile.
+- **Keyword Highlighting:** Improve readability with visual emphasis on important words.
 
 ---
 
@@ -85,6 +101,7 @@ Welcome to **RSVP** (Rapid Serial Visual Presentation)! This program allows user
   - `clap` for command-line argument parsing
   - `ratatui` for terminal-based UI
   - `crossterm` for terminal event handling
+  - `dirs-next` for managing configuration files
 - **Persistence:** Saves preferences to a hidden file in the user's home directory (`~/.rsvp_settings`).
 
 ---
@@ -96,3 +113,4 @@ This project is primarily for personal use and learning, but feedback and sugges
 ---
 
 Enjoy rapid reading with RSVP!
+
