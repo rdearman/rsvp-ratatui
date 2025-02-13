@@ -1,8 +1,7 @@
 mod interface;
 mod utilities;
 use clap::{Arg, Command};
-use crate::utilities::{load_settings, save_settings};
-
+use crate::utilities::{load_settings, save_settings,file_selector_ui, read_file_content};
 
 fn main() {
     // Load saved preferences
@@ -37,43 +36,30 @@ fn main() {
         .get_matches();
 
     // Determine speed and chunk size with priority: Command-line > Saved Preferences > Defaults
-    let  speed: u64 = matches
+    let speed: u64 = matches
         .get_one::<String>("speed")
         .and_then(|s| s.parse().ok())
         .or(saved_speed)
         .unwrap_or(250); // Default speed
 
-    let  chunk_size: usize = matches
+    let chunk_size: usize = matches
         .get_one::<String>("chunk_size")
         .and_then(|cs| cs.parse().ok())
         .or(saved_chunk_size)
         .unwrap_or(1); // Default chunk size
-		
+
     // Save updated settings
     save_settings(speed, chunk_size);
 
-    // Get the input file or default to help text
-    let input_file = matches.get_one::<String>("input").map(String::as_str).unwrap_or("default_help.txt");
+    // Get the input file or allow the user to select one
+    let words = if let Some(input_file) = matches.get_one::<String>("input") {
+        read_file_content(input_file)
+    } else {
+        file_selector_ui() // Now returns `Vec<String>`, no need for `unwrap_or_else`
+    };
 
-	let  words = if input_file == "default_help.txt" {
-		vec![
-			"Welcome to RSVP!".to_string(),
-			"This program displays one word at a time in the terminal.".to_string(),
-			"Use the up and down arrows to adjust speed.".to_string(),
-			"Press space to pause or resume.".to_string(),
-			"Press 'q' to quit.".to_string(),
-		]
-	} else {
-		std::fs::read_to_string(input_file)
-			.expect("Failed to read input file")
-			.split_whitespace()
-			.map(String::from)
-			.collect::<Vec<_>>()
-	};
+    let total_words = words.len();
 
-	let total_words = words.len();
-
-	// Pass words to the UI
-	interface::run_ui(speed, chunk_size, total_words, words);
-
+    // Pass words to the UI
+    interface::run_ui(speed, chunk_size, total_words, words);
 }

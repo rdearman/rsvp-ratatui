@@ -1,10 +1,18 @@
 [package]
 name = "rsvp"
-version = "0.1.0"
+version = "1.2.0"
 edition = "2021"
 
 [dependencies]
 ratatui = "*"
 clap="*"
 dirs-next="*"
-crossterm = "0.26" 
+crossterm = "0.26"
+epub = "1.0"         # EPUB support
+pdf-extract = "0.6"  # PDF text extraction
+html5ever = "0.26"   # HTML parsing
+pulldown-cmark = "0.9" # Markdown support
+scraper = "*"
+zip = "0.6"
+lopdf = "0.32"
+xml-rs = "0.8"     # For ODT XML parsing

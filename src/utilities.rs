@@ -1,18 +1,47 @@
-use std::io::{Read, Write, stdout};
+#![allow(unused_mut)]
+use std::error::Error;
+use std::fs;
+use std::io::{Read, Write, Cursor, stdout};
 use std::fs::{File, read_dir};
 use dirs_next::home_dir;
 use crossterm::event::{self, KeyCode, KeyEvent};
 use crossterm::terminal;
-use ratatui::layout::{Constraint, Direction, Layout};
+// use ratatui::layout::{Constraint, Direction, Layout};
 use ratatui::widgets::{Block, Borders, List, ListItem};
 use ratatui::style::{Style, Color};
 use ratatui::Terminal;
 use crate::utilities::terminal::enable_raw_mode;
 use crate::utilities::terminal::disable_raw_mode;
+use epub::doc::EpubDoc;
+use pdf_extract::extract_text;
+// use html5ever::{parse_document, tendril::TendrilSink};
+use scraper::{Html, Selector};
+use pulldown_cmark::{Parser, Options, Event};
+use zip::read::ZipArchive;
+use xml::reader::{EventReader, XmlEvent};
+use std::io::BufReader;
+
+/// List of supported file types
+const SUPPORTED_FILE_TYPES: &[&str] = &["pdf", "epub", "docx", "odt", "txt", "html", "htm", "md"];
+
+fn get_file_entries(dir: &std::path::Path) -> Vec<String> {
+    read_dir(dir)
+        .unwrap()
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .filter(|name| {
+            if let Some(ext) = name.split('.').last() {
+                SUPPORTED_FILE_TYPES.contains(&ext.to_lowercase().as_str()) // Only allow supported types
+            } else {
+                false
+            }
+        })
+        .collect()
+}
 
 
 /// File Selector UI Function
-pub fn file_selector_ui() -> Option<String> {
+pub fn file_selector_ui() -> Vec<String> {
     let mut current_dir = std::env::current_dir().expect("Failed to get current directory");
     let mut file_entries = get_file_entries(&current_dir);
     let mut selected_index = 0;
@@ -29,7 +58,6 @@ pub fn file_selector_ui() -> Option<String> {
     }
     let _guard = RawModeGuard;
 
-    // Clear the screen before drawing the UI
     terminal.clear().unwrap();
 
     loop {
@@ -75,12 +103,12 @@ pub fn file_selector_ui() -> Option<String> {
                         selected_index = 0;
                     } else {
                         terminal.clear().unwrap();
-                        return Some(selected_path.to_string_lossy().into_owned());
+                        return read_file_content(&selected_path.to_string_lossy());
                     }
                 }
                 KeyCode::Esc => {
                     terminal.clear().unwrap();
-                    return None;
+                    return vec![];
                 }
                 _ => {}
             }
@@ -89,21 +117,6 @@ pub fn file_selector_ui() -> Option<String> {
 }
 
 
-
-
-/// Helper function to get entries of a directory
-fn get_file_entries(dir: &std::path::Path) -> Vec<String> {
-    read_dir(dir)
-        .unwrap()
-        .filter_map(|entry| entry.ok())
-        .map(|entry| entry.file_name().to_string_lossy().into_owned())
-        .collect()
-}
-
-
-
-
-/* ==================================== */
 
 pub fn save_settings(speed: u64, chunk_size: usize) {
     if let Some(home) = home_dir() {
@@ -141,3 +154,116 @@ pub fn load_settings() -> (Option<u64>, Option<usize>) {
     }
     (None, None)
 }
+
+
+
+/* supports: PDF, docx, txt, html, MD */
+pub fn read_file_content(file_path: &str) -> Vec<String> {
+    if file_path.ends_with(".pdf") {
+        // Extract text from PDF
+        match extract_text(file_path) {
+            Ok(text) => text.split_whitespace().map(String::from).collect(),
+            Err(_) => panic!("Failed to extract text from PDF"),
+        }
+    } else if file_path.ends_with(".epub") {
+        // Extract text from EPUB
+        match EpubDoc::new(file_path) {
+            Ok(mut doc) => {
+                let mut text = String::new();
+                while let Ok(page) = doc.get_current_str() {
+                    text.push_str(&page);
+                    doc.go_next();
+                }
+                text.split_whitespace().map(String::from).collect()
+            }
+            Err(_) => panic!("Failed to extract text from EPUB"),
+        }
+    } else if file_path.ends_with(".docx") {
+        // Extract text from DOCX
+        let file = File::open(file_path).expect("Failed to open DOCX file");
+        let mut archive = ZipArchive::new(file).expect("Failed to read DOCX ZIP structure");
+
+        let mut text = String::new();
+
+        for i in 0..archive.len() {
+            let mut file = archive.by_index(i).expect("Failed to read DOCX entry");
+            let file_name = file.name().to_string();
+
+            if file_name == "word/document.xml" {
+                let mut content = String::new();
+                file.read_to_string(&mut content).expect("Failed to extract XML");
+
+                // Strip XML tags (a basic approach)
+                text = content
+                    .replace("<w:t>", "")
+                    .replace("</w:t>", " ")
+                    .replace("<w:p>", "\n")
+                    .replace("</w:p>", "\n");
+                break;
+            }
+        }
+
+    text.split_whitespace().map(String::from).collect()
+    } else if file_path.ends_with(".html") || file_path.ends_with(".htm") {
+        // Extract text from HTML
+        let content = fs::read_to_string(file_path).expect("Failed to read HTML file");
+        let document = Html::parse_document(&content);
+        let selector = Selector::parse("body").unwrap();
+        let text = document
+            .select(&selector)
+            .map(|e| e.text().collect::<Vec<_>>().join(" "))
+            .collect::<Vec<String>>()
+            .join(" ");
+        text.split_whitespace().map(String::from).collect()
+    } else if file_path.ends_with(".md") {
+        // Extract text from Markdown
+        let content = fs::read_to_string(file_path).expect("Failed to read Markdown file");
+        let parser = Parser::new_ext(&content, Options::all());
+        let text = parser
+            .filter_map(|event| match event {
+                Event::Text(t) => Some(t.to_string()),
+                _ => None,
+            })
+            .collect::<Vec<String>>()
+            .join(" ");
+        text.split_whitespace().map(String::from).collect()
+    } else if file_path.ends_with(".odt") {
+        // Extract text from Open Document Format
+        let file = File::open(file_path).expect("Failed to open ODT file");
+        let mut archive = ZipArchive::new(file).expect("Failed to read ODT ZIP structure");
+
+        let mut text = String::new();
+
+        for i in 0..archive.len() {
+            let mut file = archive.by_index(i).expect("Failed to read ODT entry");
+            let file_name = file.name().to_string();
+
+            if file_name == "content.xml" {
+                let mut content = String::new();
+                file.read_to_string(&mut content).expect("Failed to extract XML");
+
+                let xml_parser = EventReader::from_str(&content);
+                for event in xml_parser {
+                    if let Ok(XmlEvent::Characters(chars)) = event {
+                        text.push_str(&chars);
+                        text.push(' ');
+                    }
+                }
+                break;
+            }
+        }
+
+        text.split_whitespace().map(String::from).collect()
+
+    } else {
+        // Default to plain text files
+        fs::read_to_string(file_path)
+            .expect("Failed to read input file")
+            .split_whitespace()
+            .map(String::from)
+            .collect::<Vec<_>>()
+    }
+
+}
+
+

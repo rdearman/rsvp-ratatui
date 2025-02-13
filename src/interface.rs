@@ -1,12 +1,13 @@
+#![allow(unused_mut)]
 use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout, Alignment},
     widgets::{Block, Borders, Paragraph, Gauge},
-    text::{Span, Line, Text},
+    text::{Span, Text},
     Terminal,
 };
 use ratatui::style::{Color, Style};
-use std::io::{ Write};
+// use std::io::{ Write};
 use crossterm::{
     ExecutableCommand,
     event::{self, Event, KeyCode, KeyEvent},
@@ -16,7 +17,7 @@ use std::io::stdout;
 use std::time::{Duration, Instant};
 use crate::utilities::save_settings;
 use ratatui::{Frame}; // , backend::Backend};
-use std::fs::OpenOptions;
+//use std::fs::OpenOptions;
 use crate::utilities::file_selector_ui;
 
 
@@ -57,7 +58,7 @@ fn draw_main_ui(
     f.render_widget(Block::default().style(Style::default().bg(BGRND)), size);
 
     // **Quick Keys Block**
-    let quick_keys_text = "[Q]uit | [Space] pause/resume | [L]oad File | [P]references | [B]ookmark | [↑] +10 | [↓] -10 | [PgUp] +100 | [PgDn] -100 | [1-9] chunk size | [←] -1 chunk | [→] +1 chunk";
+    let quick_keys_text = "[Q]uit | [Space] pause/resume | [L]oad File | [P]references | [B]ookmark | [↑] +10 | [↓] -10 | [PgUp] +100 | [PgDn] -100 | [1-9] chunk size ";
     let quick_keys = Paragraph::new(quick_keys_text)
         .block(Block::default().borders(Borders::ALL).title("Menu Keys"))
         .style(Style::default().fg(SCRTEXT).bg(BGRND));
@@ -292,27 +293,24 @@ pub fn run_ui(mut speed: u64, mut chunk_size: usize, mut total_words: usize, mut
                         KeyCode::Char('p') => preferences_mode = true, // Open Preferences
                         KeyCode::Char('l') => {
                             // File Selector UI to select and load a file
-                            if let Some(selected_file) = file_selector_ui() {
-                                if let Ok(content) = std::fs::read_to_string(&selected_file) {
-                                    let words = content.split_whitespace().map(String::from).collect::<Vec<_>>();
-                                    let total_words = words.len();
-                                    let current_word_index = 0;
+                            let selected_words = file_selector_ui(); // Get words directly
 
-                                    // Ensure the terminal is fully reset before reloading the UI
-                                    terminal::disable_raw_mode().unwrap();
-                                    terminal.backend_mut().execute(LeaveAlternateScreen).unwrap();
-                                    drop(terminal); // Explicitly drop the old terminal instance
+                            if !selected_words.is_empty() {
+                                let total_words = selected_words.len();
+                                let current_word_index = 0;
 
-                                    // Relaunch UI with the new file
-                                    run_ui(speed, chunk_size, total_words, words);
+                                // Restart the UI with the new file
+                                terminal::disable_raw_mode().unwrap();
+                                terminal.backend_mut().execute(LeaveAlternateScreen).unwrap();
+                                drop(terminal);
 
-                                    // Exit after restarting to prevent duplicate instances
-                                    return;
-                                } else {
-                                    // Handle error if the file cannot be read
-                                    println!("Failed to read the selected file.");
-                                }
+                                run_ui(speed, chunk_size, total_words, selected_words);
+
+                                return;
+                            } else {
+                                println!("No file selected.");
                             }
+
                         }
                         KeyCode::Char('b') => {
                             if bookmark_mode {
