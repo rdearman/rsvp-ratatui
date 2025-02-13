@@ -70,7 +70,7 @@ fn main() {
             .unwrap_or(0) as usize;
 
         // ✅ Fix: Ensure correct arguments to run_ui()
-        let final_position = interface::run_ui(speed, chunk_size, total_words, words, &mut book_data);
+        let final_position = interface::run_ui(speed, chunk_size, total_words, words, &mut book_data, &absolute_path_str);
 
         book_data.entry(absolute_path_str.clone()).or_insert_with(|| json!({}));
         if let Some(book) = book_data.get_mut(&absolute_path_str) {

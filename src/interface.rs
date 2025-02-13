@@ -21,6 +21,7 @@ use ratatui::{Frame}; // , backend::Backend};
 use crate::utilities::file_selector_ui;
 use std::collections::HashMap;
 use serde_json::Value;
+use serde_json::json;
 
 fn draw_main_ui (
     f: &mut Frame,
@@ -177,15 +178,14 @@ fn draw_main_ui (
     f.render_widget(progress_bar, stats_chunks[1]);
 }
 
-
 pub fn run_ui(
     mut speed: u64,
     mut chunk_size: usize,
     mut total_words: usize,
     mut words: Vec<String>,
-    book_data: &mut HashMap<String, Value>, // ✅ Pass by reference
+    book_data: &mut HashMap<String, Value>,
+    file_path: &str,  // ✅ Added file path
 ) -> usize {
-
     let mut current_word_index = 0;
     let mut paused = false;
     let mut preferences_mode = false;
@@ -238,30 +238,30 @@ pub fn run_ui(
 
                 if bookmark_mode {
                     match code {
-                        KeyCode::Up => {
-                            if selected_bookmark > 0 {
-                                selected_bookmark -= 1;
-                            }
-                        }
-                        KeyCode::Down => {
-                            if selected_bookmark < bookmarks_list.len() {
-                                selected_bookmark += 1;
-                            }
-                        }
                         KeyCode::Enter => {
                             if selected_bookmark == 0 {
                                 let preview = words
                                     .get(current_word_index..(current_word_index + 5).min(words.len()))
                                     .unwrap_or(&[])
                                     .join(" ");
-                                bookmarks_list.push((current_word_index, preview));
+
+                                // ✅ Ensure bookmarks are stored in `book_data`
+                                if let Some(book) = book_data.get_mut(file_path) { // ✅ Use file_path instead of absolute_path_str                                    
+                                    let mut bookmarks = book["bookmarks"]
+                                        .as_array()
+                                        .cloned()
+                                        .unwrap_or_else(|| vec![]);
+
+                                    bookmarks.push(json!({ "position": current_word_index, "name": preview }));
+                                    book["bookmarks"] = json!(bookmarks);
+                                }
                             } else {
                                 current_word_index = bookmarks_list[selected_bookmark - 1].0;
                             }
                             bookmark_mode = false;
                         }
-                        KeyCode::Esc => bookmark_mode = false,
                         _ => {}
+                        
                     }
                 }
 
@@ -295,7 +295,7 @@ pub fn run_ui(
                                     drop(terminal);
 
                                     // Relaunch with the new file
-                                    run_ui(speed, chunk_size, total_words, words, book_data);
+                                    run_ui(speed, chunk_size, total_words, words, book_data, file_path);
                                     return current_word_index; // ✅ Correct return type
                                 } else {
                                     println!("Failed to read the selected file.");

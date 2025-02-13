@@ -130,89 +130,6 @@ fn get_file_entries(dir: &std::path::Path) -> Vec<String> {
 
 
 
-pub fn save_settings(
-    speed: u64,
-    chunk_size: usize,
-    book_data: HashMap<String, Value>,
-    max_saved_books: Option<u64>,
-    max_bookmarks_per_book: Option<u64>,
-) {
-    if let Some(home) = home_dir() {
-        let settings_path = home.join(".rsvp_settings.json");
-
-        // Load existing settings if they exist
-        let mut global_settings = json!({
-            "speed": speed,
-            "chunk_size": chunk_size,
-            "max_saved_books": 10, // Default
-            "max_bookmarks_per_book": 10 // Default
-        });
-
-        if settings_path.exists() {
-            if let Ok(mut file) = File::open(&settings_path) {
-                let mut content = String::new();
-                if file.read_to_string(&mut content).is_ok() {
-                    if let Ok(json_data) = serde_json::from_str::<Value>(&content) {
-                        if let Some(global) = json_data.get("global") {
-                            global_settings["max_saved_books"] =
-                                json!(max_saved_books.unwrap_or(global.get("max_saved_books").and_then(|v| v.as_u64()).unwrap_or(10)));
-
-                            global_settings["max_bookmarks_per_book"] =
-                                json!(max_bookmarks_per_book.unwrap_or(global.get("max_bookmarks_per_book").and_then(|v| v.as_u64()).unwrap_or(10)));
-                        }
-                    }
-                }
-            }
-        }
-
-        let settings = json!({
-            "global": global_settings,
-            "books": book_data
-        });
-
-        // Write to the JSON file
-        if let Ok(mut file) = File::create(settings_path) {
-            if let Ok(json_str) = serde_json::to_string_pretty(&settings) {
-                let _ = file.write_all(json_str.as_bytes());
-            }
-        }
-    }
-}
-
-
-/// Load settings from the user's home directory
-pub fn load_settings() -> (u64, usize, HashMap<String, Value>) {
-    let mut speed = 300; // Default speed
-    let mut chunk_size = 1; // Default chunk size
-    let mut book_data: HashMap<String, Value> = HashMap::new();
-
-    if let Some(home) = home_dir() {
-        let settings_path = home.join(".rsvp_settings.json");
-        if settings_path.exists() {
-            let mut file = File::open(settings_path).expect("Failed to open settings file.");
-            let mut content = String::new();
-            if file.read_to_string(&mut content).is_ok() {
-                if let Ok(json_data) = serde_json::from_str::<Value>(&content) {
-                    if let Some(global) = json_data.get("global") {
-                        if let Some(s) = global.get("speed").and_then(|v| v.as_u64()) {
-                            speed = s;
-                        }
-                        if let Some(cs) = global.get("chunk_size").and_then(|v| v.as_u64()) {
-                            chunk_size = cs as usize;
-                        }
-                    }
-                    if let Some(books) = json_data.get("books").and_then(|v| v.as_object()) {
-                        for (key, value) in books {
-                            book_data.insert(key.clone(), value.clone());
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-    (speed, chunk_size, book_data)
-}
 
 
 
@@ -326,3 +243,101 @@ pub fn read_file_content(file_path: &str) -> Vec<String> {
 }
 
 
+/// Save settings to a JSON file
+
+/// Load settings from the user's home directory
+pub fn load_settings() -> (u64, usize, HashMap<String, Value>) {
+    let mut speed = 300; // Default speed
+    let mut chunk_size = 1; // Default chunk size
+    let mut book_data: HashMap<String, Value> = HashMap::new();
+
+    if let Some(home) = home_dir() {
+        let settings_path = home.join(".rsvp_settings.json");
+        if settings_path.exists() {
+            let mut file = File::open(settings_path).expect("Failed to open settings file.");
+            let mut content = String::new();
+            if file.read_to_string(&mut content).is_ok() {
+                if let Ok(json_data) = serde_json::from_str::<Value>(&content) {
+                    if let Some(global) = json_data.get("global") {
+                        if let Some(s) = global.get("speed").and_then(|v| v.as_u64()) {
+                            speed = s;
+                        }
+                        if let Some(cs) = global.get("chunk_size").and_then(|v| v.as_u64()) {
+                            chunk_size = cs as usize;
+                        }
+                    }
+                    if let Some(books) = json_data.get("books").and_then(|v| v.as_object()) {
+                        for (key, value) in books {
+                            book_data.insert(key.clone(), value.clone());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    (speed, chunk_size, book_data)
+}
+
+
+pub fn save_settings(
+    speed: u64,
+    chunk_size: usize,
+    mut book_data: HashMap<String, Value>,
+    max_saved_books: Option<u64>,
+    max_bookmarks_per_book: Option<u64>,
+) {
+    if let Some(home) = home_dir() {
+        let settings_path = home.join(".rsvp_settings.json");
+
+        // Load existing settings if they exist
+        let mut global_settings = json!({
+            "speed": speed,
+            "chunk_size": chunk_size,
+            "max_saved_books": 10, // Default
+            "max_bookmarks_per_book": 10 // Default
+        });
+
+        if settings_path.exists() {
+            if let Ok(mut file) = File::open(&settings_path) {
+                let mut content = String::new();
+                if file.read_to_string(&mut content).is_ok() {
+                    if let Ok(json_data) = serde_json::from_str::<Value>(&content) {
+                        if let Some(global) = json_data.get("global") {
+                            global_settings["max_saved_books"] =
+                                json!(max_saved_books.unwrap_or(global.get("max_saved_books").and_then(|v| v.as_u64()).unwrap_or(10)));
+
+                            global_settings["max_bookmarks_per_book"] =
+                                json!(max_bookmarks_per_book.unwrap_or(global.get("max_bookmarks_per_book").and_then(|v| v.as_u64()).unwrap_or(10)));
+                        }
+
+                        // ✅ Ensure bookmarks are retained when saving
+                        if let Some(books) = json_data.get("books").and_then(|v| v.as_object()) {
+                            for (key, value) in books {
+                                if let Some(book) = book_data.get_mut(key) {
+                                    if let Some(bookmarks) = value.get("bookmarks") {
+                                        book["bookmarks"] = bookmarks.clone();
+                                    } else {
+                                        book["bookmarks"] = json!([]); // Ensure bookmarks key exists
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let settings = json!({
+            "global": global_settings,
+            "books": book_data
+        });
+
+        // ✅ Write to the JSON file
+        if let Ok(mut file) = File::create(settings_path) {
+            if let Ok(json_str) = serde_json::to_string_pretty(&settings) {
+                let _ = file.write_all(json_str.as_bytes());
+            }
+        }
+    }
+}
