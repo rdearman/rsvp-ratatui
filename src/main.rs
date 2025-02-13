@@ -51,11 +51,12 @@ fn main() {
     // Save updated settings
     save_settings(speed, chunk_size);
 
-    // Get the input file or allow the user to select one
     let words = if let Some(input_file) = matches.get_one::<String>("input") {
         read_file_content(input_file)
     } else {
-        file_selector_ui() // Now returns `Vec<String>`, no need for `unwrap_or_else`
+        file_selector_ui()
+            .map(|s| s.split_whitespace().map(String::from).collect::<Vec<_>>())
+            .unwrap_or_else(Vec::new)
     };
 
     let total_words = words.len();

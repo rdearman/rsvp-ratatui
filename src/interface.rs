@@ -294,9 +294,8 @@ pub fn run_ui(mut speed: u64, mut chunk_size: usize, mut total_words: usize, mut
                         KeyCode::Char('l') => {
                             // File Selector UI to select and load a file
                             let selected_words = file_selector_ui(); // Get words directly
-
-                            if !selected_words.is_empty() {
-                                let total_words = selected_words.len();
+                            if selected_words.as_ref().map_or(false, |s| !s.is_empty()) {
+                                let total_words = selected_words.as_ref().map(|s| s.split_whitespace().count()).unwrap_or(0);
                                 let current_word_index = 0;
 
                                 // Restart the UI with the new file
@@ -304,7 +303,11 @@ pub fn run_ui(mut speed: u64, mut chunk_size: usize, mut total_words: usize, mut
                                 terminal.backend_mut().execute(LeaveAlternateScreen).unwrap();
                                 drop(terminal);
 
-                                run_ui(speed, chunk_size, total_words, selected_words);
+                                let words = selected_words
+                                    .map(|s| s.split_whitespace().map(String::from).collect::<Vec<_>>())
+                                    .unwrap_or_else(Vec::new);
+
+                                run_ui(speed, chunk_size, total_words, words);
 
                                 return;
                             } else {

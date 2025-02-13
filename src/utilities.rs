@@ -1,63 +1,42 @@
 #![allow(unused_mut)]
-use std::error::Error;
 use std::fs;
 use std::io::{Read, Write, Cursor, stdout};
 use std::fs::{File, read_dir};
 use dirs_next::home_dir;
 use crossterm::event::{self, KeyCode, KeyEvent};
 use crossterm::terminal;
-// use ratatui::layout::{Constraint, Direction, Layout};
 use ratatui::widgets::{Block, Borders, List, ListItem};
 use ratatui::style::{Style, Color};
 use ratatui::Terminal;
-use crate::utilities::terminal::enable_raw_mode;
-use crate::utilities::terminal::disable_raw_mode;
 use epub::doc::EpubDoc;
 use pdf_extract::extract_text;
-// use html5ever::{parse_document, tendril::TendrilSink};
 use scraper::{Html, Selector};
 use pulldown_cmark::{Parser, Options, Event};
 use zip::read::ZipArchive;
 use xml::reader::{EventReader, XmlEvent};
-use std::io::BufReader;
+use ratatui::layout::{Constraint, Direction, Layout};
 
 /// List of supported file types
 const SUPPORTED_FILE_TYPES: &[&str] = &["pdf", "epub", "docx", "odt", "txt", "html", "htm", "md"];
 
-fn get_file_entries(dir: &std::path::Path) -> Vec<String> {
-    read_dir(dir)
-        .unwrap()
-        .filter_map(|entry| entry.ok())
-        .map(|entry| entry.file_name().to_string_lossy().into_owned())
-        .filter(|name| {
-            if let Some(ext) = name.split('.').last() {
-                SUPPORTED_FILE_TYPES.contains(&ext.to_lowercase().as_str()) // Only allow supported types
-            } else {
-                false
-            }
-        })
-        .collect()
-}
 
-
-/// File Selector UI Function
-pub fn file_selector_ui() -> Vec<String> {
+pub fn file_selector_ui() -> Option<String> {
     let mut current_dir = std::env::current_dir().expect("Failed to get current directory");
     let mut file_entries = get_file_entries(&current_dir);
     let mut selected_index = 0;
 
-    enable_raw_mode().unwrap();
     let backend = ratatui::backend::CrosstermBackend::new(stdout());
     let mut terminal = Terminal::new(backend).unwrap();
 
     struct RawModeGuard;
     impl Drop for RawModeGuard {
         fn drop(&mut self) {
-            let _ = disable_raw_mode();
+            let _ = terminal::disable_raw_mode();
         }
     }
     let _guard = RawModeGuard;
 
+    terminal::enable_raw_mode().unwrap();
     terminal.clear().unwrap();
 
     loop {
@@ -76,7 +55,7 @@ pub fn file_selector_ui() -> Vec<String> {
                 .collect();
 
             let list = List::new(items)
-                .block(Block::default().borders(Borders::ALL).title("Select a File"));
+                .block(Block::default().borders(Borders::ALL).title(format!("Select a File - {:?}", current_dir)));
 
             f.render_widget(list, size);
         }).unwrap();
@@ -97,24 +76,52 @@ pub fn file_selector_ui() -> Vec<String> {
                     let selected = &file_entries[selected_index];
                     let selected_path = current_dir.join(selected);
 
-                    if selected_path.is_dir() {
+                    if selected == ".." {
+                        // Move up one directory
+                        if let Some(parent) = current_dir.parent() {
+                            current_dir = parent.to_path_buf();
+                            file_entries = get_file_entries(&current_dir);
+                            selected_index = 0;
+                        }
+                    } else if selected_path.is_dir() {
+                        // Move into the selected directory
                         current_dir = selected_path;
                         file_entries = get_file_entries(&current_dir);
                         selected_index = 0;
                     } else {
                         terminal.clear().unwrap();
-                        return read_file_content(&selected_path.to_string_lossy());
+                        return Some(selected_path.to_string_lossy().into_owned());
                     }
                 }
                 KeyCode::Esc => {
                     terminal.clear().unwrap();
-                    return vec![];
+                    return None;
                 }
                 _ => {}
             }
         }
     }
 }
+
+/// Helper function to get entries of a directory
+fn get_file_entries(dir: &std::path::Path) -> Vec<String> {
+    let mut entries = Vec::new();
+
+    // Add ".." option to move up a directory
+    if dir.parent().is_some() {
+        entries.push("..".to_string());
+    }
+
+    if let Ok(read_dir) = read_dir(dir) {
+        for entry in read_dir.flatten() {
+            let file_name = entry.file_name().to_string_lossy().into_owned();
+            entries.push(file_name);
+        }
+    }
+
+    entries
+}
+
 
 
 
