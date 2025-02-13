@@ -130,9 +130,6 @@ fn get_file_entries(dir: &std::path::Path) -> Vec<String> {
 
 
 
-
-
-
 /* supports: PDF, docx, txt, html, MD */
 pub fn read_file_content(file_path: &str) -> Vec<String> {
     if file_path.ends_with(".pdf") {
@@ -241,6 +238,7 @@ pub fn read_file_content(file_path: &str) -> Vec<String> {
     }
 
 }
+
 
 
 /// Save settings to a JSON file
