@@ -23,7 +23,6 @@ use std::io::Write ;
 /// List of supported file types
 const SUPPORTED_FILE_TYPES: &[&str] = &["pdf",  "docx", "odt", "txt", "html", "htm", "md"]; // Removed "epub" because it was crashing
 
-
 pub fn file_selector_ui() -> Option<String> {
     let mut current_dir = std::env::current_dir().expect("Failed to get current directory");
     let mut file_entries = get_file_entries(&current_dir);
@@ -43,15 +42,30 @@ pub fn file_selector_ui() -> Option<String> {
     terminal::enable_raw_mode().unwrap();
     terminal.clear().unwrap();
 
+    let max_display = 45; // Maximum number of visible entries
+    let mut start_index = 0; // Track the starting index for scrolling
+
     loop {
         terminal.draw(|f| {
             let size = f.area();
-            let items: Vec<ListItem> = file_entries
+
+            // Adjust the displayed range to keep the selected item visible
+            if selected_index < start_index {
+                start_index = selected_index;
+            } else if selected_index >= start_index + max_display {
+                start_index = selected_index + 1 - max_display;
+            }
+
+            let end_index = (start_index + max_display).min(file_entries.len());
+
+            let items: Vec<ListItem> = file_entries[start_index..end_index]
                 .iter()
                 .enumerate()
                 .map(|(i, entry)| {
-                    if i == selected_index {
-                        ListItem::new(format!("=> {}", entry)).style(Style::default().fg(Color::Black).bg(Color::Yellow))
+                    let actual_index = i + start_index;
+                    if actual_index == selected_index {
+                        ListItem::new(format!("=> {}", entry))
+                            .style(Style::default().fg(Color::Black).bg(Color::Yellow))
                     } else {
                         ListItem::new(entry.clone())
                     }
@@ -91,13 +105,14 @@ pub fn file_selector_ui() -> Option<String> {
                         file_entries = get_file_entries(&current_dir);
                         selected_index = 0;
                     } else {
-                        // Close UI before returning the file
+                        // ✅ Clear UI properly before returning file
                         terminal.clear().unwrap();
                         terminal::disable_raw_mode().unwrap();
                         return Some(selected_path.to_string_lossy().into_owned());
                     }
                 }
                 KeyCode::Esc => {
+                    // ✅ Properly restore the UI when exiting
                     terminal.clear().unwrap();
                     terminal::disable_raw_mode().unwrap();
                     return None;
@@ -107,6 +122,7 @@ pub fn file_selector_ui() -> Option<String> {
         }
     }
 }
+
 
 
 /// Helper function to get entries of a directory
@@ -351,3 +367,89 @@ pub fn save_settings(
         }
     }
 }
+
+
+
+// pub fn file_selector_ui() -> Option<String> {
+//     let mut current_dir = std::env::current_dir().expect("Failed to get current directory");
+//     let mut file_entries = get_file_entries(&current_dir);
+//     let mut selected_index = 0;
+
+//     let backend = ratatui::backend::CrosstermBackend::new(stdout());
+//     let mut terminal = Terminal::new(backend).unwrap();
+
+//     struct RawModeGuard;
+//     impl Drop for RawModeGuard {
+//         fn drop(&mut self) {
+//             let _ = terminal::disable_raw_mode();
+//         }
+//     }
+//     let _guard = RawModeGuard;
+
+//     terminal::enable_raw_mode().unwrap();
+//     terminal.clear().unwrap();
+
+//     loop {
+//         terminal.draw(|f| {
+//             let size = f.area();
+//             let items: Vec<ListItem> = file_entries
+//                 .iter()
+//                 .enumerate()
+//                 .map(|(i, entry)| {
+//                     if i == selected_index {
+//                         ListItem::new(format!("=> {}", entry)).style(Style::default().fg(Color::Black).bg(Color::Yellow))
+//                     } else {
+//                         ListItem::new(entry.clone())
+//                     }
+//                 })
+//                 .collect();
+
+//             let list = List::new(items)
+//                 .block(Block::default().borders(Borders::ALL).title(format!("Select a File - {:?}", current_dir)));
+
+//             f.render_widget(list, size);
+//         }).unwrap();
+
+//         if let Ok(event::Event::Key(KeyEvent { code, .. })) = event::read() {
+//             match code {
+//                 KeyCode::Up => {
+//                     if selected_index > 0 {
+//                         selected_index -= 1;
+//                     }
+//                 }
+//                 KeyCode::Down => {
+//                     if selected_index < file_entries.len() - 1 {
+//                         selected_index += 1;
+//                     }
+//                 }
+//                 KeyCode::Enter => {
+//                     let selected = &file_entries[selected_index];
+//                     let selected_path = current_dir.join(selected);
+
+//                     if selected == ".." {
+//                         if let Some(parent) = current_dir.parent() {
+//                             current_dir = parent.to_path_buf();
+//                             file_entries = get_file_entries(&current_dir);
+//                             selected_index = 0;
+//                         }
+//                     } else if selected_path.is_dir() {
+//                         current_dir = selected_path;
+//                         file_entries = get_file_entries(&current_dir);
+//                         selected_index = 0;
+//                     } else {
+//                         // Close UI before returning the file
+//                         terminal.clear().unwrap();
+//                         terminal::disable_raw_mode().unwrap();
+//                         return Some(selected_path.to_string_lossy().into_owned());
+//                     }
+//                 }
+//                 KeyCode::Esc => {
+//                     terminal.clear().unwrap();
+//                     terminal::disable_raw_mode().unwrap();
+//                     return None;
+//                 }
+//                 _ => {}
+//             }
+//         }
+//     }
+// }

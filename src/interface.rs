@@ -125,10 +125,20 @@ fn draw_main_ui(
     } else if bookmark_mode {
         // Clear panel before displaying bookmarks
         let mut bookmark_items = vec!["=> Create Bookmark".to_string()];
-        for (i, (index, preview)) in bookmarks_list.iter().enumerate() {
-            let selected = if i + 1 == selected_bookmark { "=>" } else { "  " };
+        // for (i, (index, preview)) in bookmarks_list.iter().enumerate() {
+        //     let selected = if i + 1 == selected_bookmark { "=>" } else { "  " };
+        //     bookmark_items.push(format!("{} Word #{} ({})", selected, index, preview));
+        // }
+        let max_display = 10; // ✅ Limit display to 10 bookmarks at a time
+        let start_index = selected_bookmark.saturating_sub(max_display / 2);
+        let end_index = (start_index + max_display).min(bookmarks_list.len());
+
+        for (i, (index, preview)) in bookmarks_list[start_index..end_index].iter().enumerate() {
+            let selected = if i + start_index == selected_bookmark { "=>" } else { "  " };
             bookmark_items.push(format!("{} Word #{} ({})", selected, index, preview));
         }
+
+
         let bookmark_text = bookmark_items.join("\n");
 
         let bookmark_block = Paragraph::new(bookmark_text)
@@ -347,41 +357,46 @@ pub fn run_ui(
                         KeyCode::Char(' ') => pause_mode = !pause_mode,
                         KeyCode::Char('p') => preferences_mode = true,
                         KeyCode::Char('l') => {
-                            if let Some(selected_file) = file_selector_ui() {
-                                if let Ok(content) = std::fs::read_to_string(&selected_file) {
-                                    let words = content.split_whitespace().map(String::from).collect::<Vec<_>>();
-                                    let total_words = words.len();
+                            match file_selector_ui() {
+                                Some(selected_file) => {
+                                    if let Ok(content) = std::fs::read_to_string(&selected_file) {
+                                        let words = content.split_whitespace().map(String::from).collect::<Vec<_>>();
+                                        let total_words = words.len();
 
-                                    let book_entry = book_data.entry(selected_file.clone()).or_insert_with(|| json!({
-                                        "bookmarks": [],
-                                        "speed": speed,  // Use speed passed into run_ui()
-                                        "chunk_size": chunk_size,  // Use chunk_size passed into run_ui()
-                                        "last_position": 0
-                                    }));
-                                    
+                                        let book_entry = book_data.entry(selected_file.clone()).or_insert_with(|| json!({
+                                            "bookmarks": [],
+                                            "speed": speed,
+                                            "chunk_size": chunk_size,
+                                            "last_position": 0
+                                        }));
 
-                                    // Load bookmarks from book_data
-                                    let mut bookmarks_list: Vec<(usize, String)> = vec![];
-                                    if let Some(bookmarks) = book_entry["bookmarks"].as_array() {
-                                        bookmarks_list = bookmarks.iter().filter_map(|bm| {
-                                            Some((
-                                                bm.get("position")?.as_u64()? as usize,
-                                                bm.get("preview")?.as_str()?.to_string(),
-                                            ))
-                                        }).collect();
+                                        let mut bookmarks_list: Vec<(usize, String)> = vec![];
+                                        if let Some(bookmarks) = book_entry["bookmarks"].as_array() {
+                                            bookmarks_list = bookmarks.iter().filter_map(|bm| {
+                                                Some((
+                                                    bm.get("position")?.as_u64()? as usize,
+                                                    bm.get("preview")?.as_str()?.to_string(),
+                                                ))
+                                            }).collect();
+                                        }
+
+                                        terminal::disable_raw_mode().unwrap();
+                                        terminal.backend_mut().execute(LeaveAlternateScreen).unwrap();
+                                        drop(terminal);
+
+                                        run_ui(speed, chunk_size, total_words, words, book_data, global_speed, global_chunk_size, selected_file.clone());
+                                        return current_word_index;
                                     }
-
-                                    // Relaunch UI with updated bookmarks
-                                    terminal::disable_raw_mode().unwrap();
-                                    terminal.backend_mut().execute(LeaveAlternateScreen).unwrap();
-                                    drop(terminal);
-
-                                    run_ui(speed, chunk_size, total_words, words, book_data, global_speed, global_chunk_size, selected_file.clone());
+                                }
+                                None => {
+                                    // ✅ Just restart `run_ui()` to restore UI
+                                    run_ui(speed, chunk_size, total_words, words, book_data, global_speed, global_chunk_size, file_path.clone());
                                     return current_word_index;
-                                } else {
-                                    // println!("Failed to read the selected file.");
                                 }
                             }
+
+
+
                         }
                         KeyCode::Char('b') => {
                             if bookmark_mode {
