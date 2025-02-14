@@ -2,11 +2,11 @@
 use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout, Alignment},
-    widgets::{Block, Borders, Paragraph, Gauge},
-    text::{Span, Text},
+    widgets::{Wrap, Block, Borders, Paragraph, Gauge},
+    text::{Span, Line, Text},
     Terminal,
 };
-use ratatui::style::{Color, Style};
+use ratatui::style::{Color, Style, Modifier};
 // use std::io::{ Write};
 use crossterm::{
     ExecutableCommand,
@@ -25,9 +25,7 @@ use serde_json::json;use serde_json::Value;
 
 
 
-
-
-fn draw_main_ui (
+fn draw_main_ui(
     f: &mut Frame,
     current_word_index: usize,
     chunk_size: usize,
@@ -40,9 +38,10 @@ fn draw_main_ui (
     bookmark: usize,
     preferences_mode: bool,
     bookmark_mode: bool,
-    pause_mode: bool, // NEW: Accept pause_mode
+    pause_mode: bool,
     bookmarks_list: &[(usize, String)],
     selected_bookmark: usize,
+    file_path: &str, // ✅ Add missing file_path
 ) {
     const BGRND: Color = Color::Rgb(10, 34, 171); // Background color
     const TXT: Color = Color::Rgb(63, 252, 123); // Text color
@@ -90,16 +89,37 @@ fn draw_main_ui (
 
     // **BOOKMARK/PAUSE UI (IN BOTTOM SPACER)**    
     if pause_mode {
-        // Clear panel before displaying context
-        let start = current_word_index.saturating_sub(10);
-        let end = (current_word_index + 10).min(words.len());
-        let context_text = format!(
-            "[Context]\n... {} ...", words[start..end].join(" ")
-        );
+        // Define window for context (20 words before and 20 words after the chunk)
+        let before_start = current_word_index.saturating_sub(20);
+        let chunk_end = (current_word_index + chunk_size).min(words.len());
+        let after_end = (chunk_end + 20).min(words.len());
+
+        // Get surrounding context
+        let before_text = words[before_start..current_word_index].join(" ");
+        let current_chunk = words[current_word_index..chunk_end].join(" ").to_uppercase(); // ✅ Show the full chunk
+        let after_text = words[chunk_end..after_end].join(" ");
+        let margin = "          "; // Define a left and right margin (spaces)
+
+        // Define styling
+        let chunk_style = Style::default().fg(TXT).bg(Color::Black).add_modifier(Modifier::BOLD); // ✅ Set chunk colour
+
+        let context_text = Text::from(vec![
+            Line::from(Span::styled("[Context]", Style::default().fg(TXT))), // Title
+            Line::from(""), // Empty line
+            Line::from(vec![
+                Span::raw(format!("{} ", margin)),         // Left margin
+                Span::raw(before_text),                    // Words before the chunk
+                Span::styled(format!(" [{}] ", current_chunk), chunk_style), // Highlighted chunk
+                Span::raw(after_text),                     // Words after the chunk
+                Span::raw(margin),                         // Right margin
+            ])
+        ]);
 
         let context_block = Paragraph::new(context_text)
-            .block(Block::default().borders(Borders::ALL).title("Paused Context"))
-            .style(Style::default().fg(Color::Yellow).bg(Color::Black));
+            .block(Block::default().borders(Borders::ALL).title("Paused"))
+            .alignment(Alignment::Center) // ✅ Centers text
+            .wrap(Wrap { trim: true }) // ✅ Enables word wrapping
+            .style(Style::default().bg(Color::Black));
 
         f.render_widget(context_block, chunks[3]);
     } else if bookmark_mode {
@@ -122,8 +142,6 @@ fn draw_main_ui (
         f.render_widget(bottom_spacer, chunks[3]);
     }
 
-    
-    
     // **Text Block**
     let word_display = if current_word_index < words.len() {
         words[current_word_index..current_word_index + chunk_size.min(words.len() - current_word_index)].join(" ")
@@ -153,11 +171,14 @@ fn draw_main_ui (
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)]) // Left/Right Stats
         .split(stats_chunks[0]);
 
-    // **Left Stats**
+    // Use the `file_path` that is passed to the function
+    let file_path = file_path.to_string();
+
     let left_stats_text = format!(
-        "Words Read This Session: {}\nTotal Words: {} of {}\nReading Time: {:.2} seconds",
-        words_read, words_read, total_words, reading_time
+        "File: {}\nWords Read This Session: {}\nTotal Words: {} of {}\nReading Time: {:.2} seconds",
+        file_path.to_string(), words_read, words_read, total_words, reading_time
     );
+    
     let left_stats = Paragraph::new(left_stats_text)
         .block(Block::default().borders(Borders::ALL).title("Reading Statistics"))
         .style(Style::default().fg(SCRTEXT).bg(BGRND));
@@ -165,8 +186,8 @@ fn draw_main_ui (
 
     // **Right Stats**
     let right_stats_text = format!(
-        "Speed: {} WPM\nChunk Size: {}\nBookmarked: {}\nBookmark Word#: {}",
-        speed, chunk_size, bookmarked, bookmark
+        "\nSpeed: {} WPM\nChunk Size: {}",
+        speed, chunk_size
     );
     let right_stats = Paragraph::new(right_stats_text)
         .block(Block::default().borders(Borders::ALL).title("Settings"))
@@ -189,8 +210,9 @@ pub fn run_ui(
     mut total_words: usize,
     mut words: Vec<String>,
     book_data: &mut HashMap<String, Value>,
-    global_speed: u64,
-    global_chunk_size: usize,
+    global_speed: u64,          // ✅ Keep global speed
+    global_chunk_size: usize,   // ✅ Keep global chunk size
+    file_path: String,          // ✅ Correct position
 ) -> usize {
     let mut current_word_index = 0;
     let mut paused = false;
@@ -210,22 +232,10 @@ pub fn run_ui(
 
     let mut words_read = 0;
     let mut reading_time = 0.0;
-    // let mut bookmarks_list: Vec<(usize, String)> = vec![];
+    //let mut bookmarks_list: Vec<(usize, String)> = vec![];
 
     let mut bookmarks_list: Vec<(usize, String)> = vec![];
-    let file_path = book_data.keys().next().cloned().unwrap_or_default();
-
-    if let Some(book) = book_data.get(&file_path) {
-        if let Some(bookmarks) = book["bookmarks"].as_array() {
-            bookmarks_list = bookmarks.iter().filter_map(|bm| {
-                Some((
-                    bm.get("position")?.as_u64()? as usize,
-                    bm.get("preview")?.as_str()?.to_string(),
-                ))
-            }).collect();
-        }
-    }
-
+    //let file_path = book_data.keys().next().cloned().unwrap_or_default();
 
     let mut selected_bookmark = 0;
     let mut pause_mode = false;
@@ -247,6 +257,7 @@ pub fn run_ui(
             pause_mode,
             &bookmarks_list,
             selected_bookmark,
+            &file_path, // ✅ Fix missing file_path
         )
     }).unwrap();
 
@@ -284,17 +295,6 @@ pub fn run_ui(
                                 // bookmarks_list.push((current_word_index, preview));
                                 bookmarks_list.push((current_word_index, preview.clone())); // Clone before move
                                 // ✅ Store bookmarks in book_data
-                                // let file_path = book_data.keys().next().cloned().unwrap_or_default();
-                                // if let Some(book) = book_data.get_mut(&file_path) {
-                                //     // book.entry("bookmarks").or_insert_with(|| json!([]));
-                                //     if !book.get("bookmarks").is_some() {
-                                //         book["bookmarks"] = json!([]);
-                                //     }
-                                //     if let Some(bookmarks) = book["bookmarks"].as_array_mut() {
-                                //         // bookmarks.push(json!({ "position": current_word_index, "preview": preview }));
-                                //         bookmarks.push(json!({ "position": current_word_index, "preview": preview.clone() })); // Clone before reuse
-                                //     }
-                                // }
 
                                 let file_path = book_data.keys().next().cloned().unwrap_or_default();
                                 let book_entry = book_data.entry(file_path.clone()).or_insert_with(|| json!({ "bookmarks": [] }));
@@ -323,7 +323,7 @@ pub fn run_ui(
                 if preferences_mode {
                     match code {
                         KeyCode::Up => speed += 10,
-                        KeyCode::Down => speed = speed.saturating_sub(10),
+                        KeyCode::Down => speed = (speed.saturating_sub(10)).max(1),
                         KeyCode::Right => chunk_size += 1,
                         KeyCode::Left => chunk_size = chunk_size.saturating_sub(1),
                         KeyCode::Enter => {
@@ -339,36 +339,10 @@ pub fn run_ui(
                         KeyCode::Char(' ') => pause_mode = !pause_mode,
                         KeyCode::Char('p') => preferences_mode = true,
                         KeyCode::Char('l') => {
-                            // if let Some(selected_file) = file_selector_ui() {
-                            //     if let Ok(content) = std::fs::read_to_string(&selected_file) {
-                            //         let words = content.split_whitespace().map(String::from).collect::<Vec<_>>();
-                            //         let total_words = words.len();
-                            //         let start_position = 0;
-
-                            //         // Fully reset UI before restarting
-                            //         terminal::disable_raw_mode().unwrap();
-                            //         terminal.backend_mut().execute(LeaveAlternateScreen).unwrap();
-                            //         drop(terminal);
-
-                            //         // Relaunch with the new file
-                            //         run_ui(speed, chunk_size, total_words, words, book_data);
-                            //         return current_word_index; // ✅ Correct return type
-                            //     } else {
-                            //         println!("Failed to read the selected file.");
-                            //     }
-                            // }
                             if let Some(selected_file) = file_selector_ui() {
                                 if let Ok(content) = std::fs::read_to_string(&selected_file) {
                                     let words = content.split_whitespace().map(String::from).collect::<Vec<_>>();
                                     let total_words = words.len();
-
-                                    // Ensure file is registered in book_data
-                                    // let book_entry = book_data.entry(selected_file.clone()).or_insert_with(|| json!({
-                                    //     "bookmarks": [],
-                                    //     "speed": global_speed,
-                                    //     "chunk_size": global_chunk_size,
-                                    //     "last_position": 0
-                                    // }));
 
                                     let book_entry = book_data.entry(selected_file.clone()).or_insert_with(|| json!({
                                         "bookmarks": [],
@@ -393,11 +367,11 @@ pub fn run_ui(
                                     terminal::disable_raw_mode().unwrap();
                                     terminal.backend_mut().execute(LeaveAlternateScreen).unwrap();
                                     drop(terminal);
-                                    // run_ui(speed, chunk_size, total_words, words, book_data);
-                                    run_ui(speed, chunk_size, total_words, words, book_data, global_speed, global_chunk_size);
+
+                                    run_ui(speed, chunk_size, total_words, words, book_data, global_speed, global_chunk_size, selected_file.clone());
                                     return current_word_index;
                                 } else {
-                                    println!("Failed to read the selected file.");
+                                    // println!("Failed to read the selected file.");
                                 }
                             }
                         }
@@ -422,7 +396,7 @@ pub fn run_ui(
                             word_delay =  Duration::from_millis(60000 / speed);
                         }
                         KeyCode::PageDown => {
-                            speed = speed.saturating_sub(100);
+                            speed = (speed.saturating_sub(100)).max(1);
                             word_delay = Duration::from_millis(60000 / speed);
                         }
                         KeyCode::Right => current_word_index = (current_word_index + chunk_size).min(words.len()),
@@ -451,8 +425,10 @@ pub fn run_ui(
                         pause_mode,
                         &bookmarks_list,
                         selected_bookmark,
+                        &file_path, // ✅ Fix missing file_path
                     )
                 }).unwrap();
+
             }
         }
 
@@ -483,6 +459,7 @@ pub fn run_ui(
                     pause_mode,
                     &bookmarks_list,
                     selected_bookmark,
+                    &file_path, // ✅ Fix missing file_path
                 )
             }).unwrap();
         }

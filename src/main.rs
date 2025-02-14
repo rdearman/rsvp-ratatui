@@ -78,8 +78,18 @@ fn main() {
             .unwrap_or(0) as usize;
 
         // ✅ Fix: Ensure correct arguments to run_ui()
-        let final_position = interface::run_ui(speed, chunk_size, total_words, words, &mut book_data, global_speed, global_chunk_size);
-        
+        // let final_position = interface::run_ui(speed, chunk_size, total_words, words, &mut book_data, absolute_path_str.clone());        
+        let final_position = interface::run_ui(
+            speed,
+            chunk_size,
+            total_words,
+            words,
+            &mut book_data,
+            global_speed,          // ✅ Add missing global_speed
+            global_chunk_size,     // ✅ Add missing global_chunk_size
+            absolute_path_str.clone(), // ✅ Correct file_path position
+        );
+
         book_data.entry(absolute_path_str.clone()).or_insert_with(|| json!({}));
         if let Some(book) = book_data.get_mut(&absolute_path_str) {
             book["last_position"] = json!(final_position);
