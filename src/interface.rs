@@ -188,9 +188,10 @@ pub fn run_ui(
     mut chunk_size: usize,
     mut total_words: usize,
     mut words: Vec<String>,
-    book_data: &mut HashMap<String, Value>, // ✅ Pass by reference
+    book_data: &mut HashMap<String, Value>,
+    global_speed: u64,
+    global_chunk_size: usize,
 ) -> usize {
-
     let mut current_word_index = 0;
     let mut paused = false;
     let mut preferences_mode = false;
@@ -209,7 +210,23 @@ pub fn run_ui(
 
     let mut words_read = 0;
     let mut reading_time = 0.0;
+    // let mut bookmarks_list: Vec<(usize, String)> = vec![];
+
     let mut bookmarks_list: Vec<(usize, String)> = vec![];
+    let file_path = book_data.keys().next().cloned().unwrap_or_default();
+
+    if let Some(book) = book_data.get(&file_path) {
+        if let Some(bookmarks) = book["bookmarks"].as_array() {
+            bookmarks_list = bookmarks.iter().filter_map(|bm| {
+                Some((
+                    bm.get("position")?.as_u64()? as usize,
+                    bm.get("preview")?.as_str()?.to_string(),
+                ))
+            }).collect();
+        }
+    }
+
+
     let mut selected_bookmark = 0;
     let mut pause_mode = false;
 
@@ -322,20 +339,63 @@ pub fn run_ui(
                         KeyCode::Char(' ') => pause_mode = !pause_mode,
                         KeyCode::Char('p') => preferences_mode = true,
                         KeyCode::Char('l') => {
+                            // if let Some(selected_file) = file_selector_ui() {
+                            //     if let Ok(content) = std::fs::read_to_string(&selected_file) {
+                            //         let words = content.split_whitespace().map(String::from).collect::<Vec<_>>();
+                            //         let total_words = words.len();
+                            //         let start_position = 0;
+
+                            //         // Fully reset UI before restarting
+                            //         terminal::disable_raw_mode().unwrap();
+                            //         terminal.backend_mut().execute(LeaveAlternateScreen).unwrap();
+                            //         drop(terminal);
+
+                            //         // Relaunch with the new file
+                            //         run_ui(speed, chunk_size, total_words, words, book_data);
+                            //         return current_word_index; // ✅ Correct return type
+                            //     } else {
+                            //         println!("Failed to read the selected file.");
+                            //     }
+                            // }
                             if let Some(selected_file) = file_selector_ui() {
                                 if let Ok(content) = std::fs::read_to_string(&selected_file) {
                                     let words = content.split_whitespace().map(String::from).collect::<Vec<_>>();
                                     let total_words = words.len();
-                                    let start_position = 0;
 
-                                    // Fully reset UI before restarting
+                                    // Ensure file is registered in book_data
+                                    // let book_entry = book_data.entry(selected_file.clone()).or_insert_with(|| json!({
+                                    //     "bookmarks": [],
+                                    //     "speed": global_speed,
+                                    //     "chunk_size": global_chunk_size,
+                                    //     "last_position": 0
+                                    // }));
+
+                                    let book_entry = book_data.entry(selected_file.clone()).or_insert_with(|| json!({
+                                        "bookmarks": [],
+                                        "speed": speed,  // Use speed passed into run_ui()
+                                        "chunk_size": chunk_size,  // Use chunk_size passed into run_ui()
+                                        "last_position": 0
+                                    }));
+                                    
+
+                                    // Load bookmarks from book_data
+                                    let mut bookmarks_list: Vec<(usize, String)> = vec![];
+                                    if let Some(bookmarks) = book_entry["bookmarks"].as_array() {
+                                        bookmarks_list = bookmarks.iter().filter_map(|bm| {
+                                            Some((
+                                                bm.get("position")?.as_u64()? as usize,
+                                                bm.get("preview")?.as_str()?.to_string(),
+                                            ))
+                                        }).collect();
+                                    }
+
+                                    // Relaunch UI with updated bookmarks
                                     terminal::disable_raw_mode().unwrap();
                                     terminal.backend_mut().execute(LeaveAlternateScreen).unwrap();
                                     drop(terminal);
-
-                                    // Relaunch with the new file
-                                    run_ui(speed, chunk_size, total_words, words, book_data);
-                                    return current_word_index; // ✅ Correct return type
+                                    // run_ui(speed, chunk_size, total_words, words, book_data);
+                                    run_ui(speed, chunk_size, total_words, words, book_data, global_speed, global_chunk_size);
+                                    return current_word_index;
                                 } else {
                                     println!("Failed to read the selected file.");
                                 }

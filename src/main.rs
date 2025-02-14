@@ -52,26 +52,34 @@ fn main() {
         let total_words = words.len();
 
         // ✅ Fix: Restore book data handling
-        let book_settings = book_data.get(&absolute_path_str).and_then(|b| b.as_object());
+        // let book_settings = book_data.get(&absolute_path_str).and_then(|b| b.as_object());
+        let book_settings = book_data.entry(absolute_path_str.clone()).or_insert_with(|| json!({
+            "bookmarks": [],
+            "speed": global_speed,
+            "chunk_size": global_chunk_size,
+            "last_position": 0
+        }));
+
+
         let speed = matches
             .get_one::<String>("speed")
             .and_then(|s| s.parse().ok())
-            .or_else(|| book_settings.and_then(|b| b.get("speed")?.as_u64()))
+            .or_else(|| book_settings.as_object().and_then(|b| b.get("speed")?.as_u64()))
             .unwrap_or(global_speed);
 
         let chunk_size = matches
             .get_one::<String>("chunk_size")
             .and_then(|cs| cs.parse().ok())
-            .or_else(|| book_settings.and_then(|b| b.get("chunk_size")?.as_u64()).map(|cs| cs as usize))
+            .or_else(|| book_settings.as_object().and_then(|b| b.get("chunk_size")?.as_u64()).map(|cs| cs as usize))
             .unwrap_or(global_chunk_size);
 
         let _last_position = book_settings
-            .and_then(|b| b.get("last_position")?.as_u64())
+            .as_object().and_then(|b| b.get("last_position")?.as_u64())
             .unwrap_or(0) as usize;
 
         // ✅ Fix: Ensure correct arguments to run_ui()
-        let final_position = interface::run_ui(speed, chunk_size, total_words, words, &mut book_data);
-
+        let final_position = interface::run_ui(speed, chunk_size, total_words, words, &mut book_data, global_speed, global_chunk_size);
+        
         book_data.entry(absolute_path_str.clone()).or_insert_with(|| json!({}));
         if let Some(book) = book_data.get_mut(&absolute_path_str) {
             book["last_position"] = json!(final_position);
