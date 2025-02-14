@@ -236,7 +236,8 @@ pub fn run_ui(
 
     let mut bookmarks_list: Vec<(usize, String)> = vec![];
     //let file_path = book_data.keys().next().cloned().unwrap_or_default();
-
+    let file_path = file_path.clone(); // Ensure we're using the correct file
+    
     let mut selected_bookmark = 0;
     let mut pause_mode = false;
 
@@ -296,8 +297,15 @@ pub fn run_ui(
                                 bookmarks_list.push((current_word_index, preview.clone())); // Clone before move
                                 // ✅ Store bookmarks in book_data
 
-                                let file_path = book_data.keys().next().cloned().unwrap_or_default();
-                                let book_entry = book_data.entry(file_path.clone()).or_insert_with(|| json!({ "bookmarks": [] }));
+                                // let file_path = book_data.keys().next().cloned().unwrap_or_default();
+                                let file_path = file_path.clone(); // ✅ Use the correct file_path passed to run_ui()
+                                // let book_entry = book_data.entry(file_path.clone()).or_insert_with(|| json!({ "bookmarks": [] }));
+                                let book_entry = book_data.entry(file_path.clone()).or_insert_with(|| json!({
+                                    "bookmarks": [],
+                                    "speed": speed,
+                                    "chunk_size": chunk_size,
+                                    "last_position": 0
+                                }));
 
                                 if !book_entry["bookmarks"].is_array() {
                                     book_entry["bookmarks"] = json!([]);
