@@ -314,10 +314,22 @@ pub fn save_settings(
                             for (key, value) in books {
                                 if let Some(book) = book_data.get_mut(key) {
                                     if let Some(bookmarks) = value.get("bookmarks") {
-                                        book["bookmarks"] = bookmarks.clone();
-                                    } else {
-                                        book["bookmarks"] = json!([]); // Ensure bookmarks key exists
+                                        if book["bookmarks"].is_array() {
+                                            // ✅ Ensure new bookmarks are merged with existing ones
+                                            if let Some(existing_bookmarks) = book["bookmarks"].as_array_mut() {
+                                                for bm in bookmarks.as_array().unwrap() {
+                                                    if !existing_bookmarks.contains(bm) {
+                                                        existing_bookmarks.push(bm.clone());
+                                                    }
+                                                }
+                                            }
+                                        } else {
+                                            book["bookmarks"] = bookmarks.clone();
+                                        }
                                     }
+                                } else {
+                                    // ✅ If book entry does not exist, create it with bookmarks
+                                    book_data.insert(key.clone(), json!({ "bookmarks": value.get("bookmarks").cloned().unwrap_or(json!([])) }));
                                 }
                             }
                         }

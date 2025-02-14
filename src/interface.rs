@@ -20,7 +20,12 @@ use ratatui::{Frame}; // , backend::Backend};
 //use std::fs::OpenOptions;
 use crate::utilities::file_selector_ui;
 use std::collections::HashMap;
-use serde_json::Value;
+//use crate::json;
+use serde_json::json;use serde_json::Value;
+
+
+
+
 
 fn draw_main_ui (
     f: &mut Frame,
@@ -250,11 +255,44 @@ pub fn run_ui(
                         }
                         KeyCode::Enter => {
                             if selected_bookmark == 0 {
+                                // let preview = words
+                                //     .get(current_word_index..(current_word_index + 5).min(words.len()))
+                                //     .unwrap_or(&[])
+                                //     .join(" ");
+                                // bookmarks_list.push((current_word_index, preview));
                                 let preview = words
                                     .get(current_word_index..(current_word_index + 5).min(words.len()))
                                     .unwrap_or(&[])
                                     .join(" ");
-                                bookmarks_list.push((current_word_index, preview));
+                                // bookmarks_list.push((current_word_index, preview));
+                                bookmarks_list.push((current_word_index, preview.clone())); // Clone before move
+                                // ✅ Store bookmarks in book_data
+                                // let file_path = book_data.keys().next().cloned().unwrap_or_default();
+                                // if let Some(book) = book_data.get_mut(&file_path) {
+                                //     // book.entry("bookmarks").or_insert_with(|| json!([]));
+                                //     if !book.get("bookmarks").is_some() {
+                                //         book["bookmarks"] = json!([]);
+                                //     }
+                                //     if let Some(bookmarks) = book["bookmarks"].as_array_mut() {
+                                //         // bookmarks.push(json!({ "position": current_word_index, "preview": preview }));
+                                //         bookmarks.push(json!({ "position": current_word_index, "preview": preview.clone() })); // Clone before reuse
+                                //     }
+                                // }
+
+                                let file_path = book_data.keys().next().cloned().unwrap_or_default();
+                                let book_entry = book_data.entry(file_path.clone()).or_insert_with(|| json!({ "bookmarks": [] }));
+
+                                if !book_entry["bookmarks"].is_array() {
+                                    book_entry["bookmarks"] = json!([]);
+                                }
+                                
+                                // Add the new bookmark
+                                if let Some(bookmarks) = book_entry["bookmarks"].as_array_mut() {
+                                    bookmarks.push(json!({ "position": current_word_index, "preview": preview.clone() }));
+                                }
+                                // println!("Saving bookmarks: {:?}", book_entry["bookmarks"]);
+                                save_settings(speed, chunk_size, book_data.clone(), None, None);
+
                             } else {
                                 current_word_index = bookmarks_list[selected_bookmark - 1].0;
                             }
@@ -272,6 +310,7 @@ pub fn run_ui(
                         KeyCode::Right => chunk_size += 1,
                         KeyCode::Left => chunk_size = chunk_size.saturating_sub(1),
                         KeyCode::Enter => {
+                            word_delay = Duration::from_millis(60000 / speed);
                             save_settings(speed, chunk_size, book_data.clone(), None, None);
                             preferences_mode = false;
                         }
@@ -318,8 +357,14 @@ pub fn run_ui(
                         }
                         KeyCode::Up => speed += 10,
                         KeyCode::Down => speed = speed.saturating_sub(10),
-                        KeyCode::PageUp => speed += 100,
-                        KeyCode::PageDown => speed = speed.saturating_sub(100),
+                        KeyCode::PageUp => {
+                            speed += 100;
+                            word_delay =  Duration::from_millis(60000 / speed);
+                        }
+                        KeyCode::PageDown => {
+                            speed = speed.saturating_sub(100);
+                            word_delay = Duration::from_millis(60000 / speed);
+                        }
                         KeyCode::Right => current_word_index = (current_word_index + chunk_size).min(words.len()),
                         KeyCode::Left => current_word_index = current_word_index.saturating_sub(chunk_size),
                         KeyCode::Char(c) if c.is_digit(10) => {
