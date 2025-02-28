@@ -183,7 +183,7 @@ fn draw_main_ui(
     let file_path = file_path.to_string();
 
     let left_stats_text = format!(
-        "File: {}\nWords Read This Session: {}\nTotal Words: {} of {}\nReading Time: {:.2} seconds\nCurrent Position: {}",
+        "\nFile: {}\nWords Read This Session: {}\nTotal Words: {} of {}\nReading Time: {:.2} seconds\nCurrent Position: {}",
         file_path.to_string(), words_read, words_read, total_words, reading_time, current_word_index
     );
     
@@ -203,7 +203,9 @@ fn draw_main_ui(
     f.render_widget(right_stats, stats_split[1]);
 
     // **Progress Bar**
-    let progress_ratio = words_read as f64 / total_words as f64;
+    let progress_ratio = current_word_index as f64 / total_words as f64;
+    // let progress_ratio = words_read as f64 / total_words as f64;
+    // println!("DEBUG: words_read = {}, total_words = {}, progress_ratio = {}", words_read, total_words, progress_ratio);
     let progress_bar = Gauge::default()
         .block(Block::default().borders(Borders::ALL).title("Progress"))
         .gauge_style(Style::default().fg(Color::Green).bg(BGRND))
