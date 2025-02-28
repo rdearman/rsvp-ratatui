@@ -1,6 +1,6 @@
 #![allow(unused_mut)]
 use std::fs;
-use std::io::{Read, Cursor, stdout};
+use std::io::{Read, stdout};
 use dirs_next::home_dir;
 use crossterm::event::{self, KeyCode, KeyEvent};
 use crossterm::terminal;
@@ -13,7 +13,6 @@ use scraper::{Html, Selector};
 use pulldown_cmark::{Parser, Options, Event};
 use zip::read::ZipArchive;
 use xml::reader::{EventReader, XmlEvent};
-use ratatui::layout::{Constraint, Direction, Layout};
 use std::collections::HashMap;
 use serde_json::{json, Value};
 //use std::io::{Write, Read};
@@ -108,7 +107,14 @@ pub fn file_selector_ui() -> Option<String> {
                         // ✅ Clear UI properly before returning file
                         terminal.clear().unwrap();
                         terminal::disable_raw_mode().unwrap();
-                        return Some(selected_path.to_string_lossy().into_owned());
+//                        return Some(selected_path.to_string_lossy().into_owned());
+                        if let Ok(absolute_path) = fs::canonicalize(&selected_path) {
+                            return Some(absolute_path.to_string_lossy().into_owned());
+                        } else {
+                            return Some(selected_path.to_string_lossy().into_owned());
+                        }
+
+
                     }
                 }
                 KeyCode::Esc => {
@@ -125,11 +131,10 @@ pub fn file_selector_ui() -> Option<String> {
 
 
 
-/// Helper function to get entries of a directory
 fn get_file_entries(dir: &std::path::Path) -> Vec<String> {
     let mut entries = Vec::new();
 
-    // Add ".." option to move up a directory
+    // Always add ".." to move up a directory
     if dir.parent().is_some() {
         entries.push("..".to_string());
     }
@@ -137,7 +142,17 @@ fn get_file_entries(dir: &std::path::Path) -> Vec<String> {
     if let Ok(read_dir) = read_dir(dir) {
         for entry in read_dir.flatten() {
             let file_name = entry.file_name().to_string_lossy().into_owned();
-            entries.push(file_name);
+            let path = entry.path();
+
+            if path.is_dir() {
+                // Always add directories
+                entries.push(file_name);
+            } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                // Only add files with supported extensions
+                if SUPPORTED_FILE_TYPES.contains(&ext) {
+                    entries.push(file_name);
+                }
+            }
         }
     }
 
@@ -161,7 +176,7 @@ pub fn read_file_content(file_path: &str) -> Vec<String> {
                 let mut text = String::new();
                 while let Ok(page) = doc.get_current_str() {
                     text.push_str(&page);
-                    doc.go_next();
+                    let _ = doc.go_next();
                 }
                 text.split_whitespace().map(String::from).collect()
             }

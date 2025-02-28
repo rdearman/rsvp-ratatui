@@ -24,7 +24,6 @@ use std::collections::HashMap;
 use serde_json::json;use serde_json::Value;
 
 
-
 fn draw_main_ui(
     f: &mut Frame,
     current_word_index: usize,
@@ -34,8 +33,6 @@ fn draw_main_ui(
     speed: u64,
     words_read: usize,
     reading_time: f64,
-    bookmarked: bool,
-    bookmark: usize,
     preferences_mode: bool,
     bookmark_mode: bool,
     pause_mode: bool,
@@ -43,6 +40,7 @@ fn draw_main_ui(
     selected_bookmark: usize,
     file_path: &str, // ✅ Add missing file_path
 ) {
+    // panic!("DEBUG: Passed current_word_index = {}", current_word_index);
     const BGRND: Color = Color::Rgb(10, 34, 171); // Background color
     const TXT: Color = Color::Rgb(63, 252, 123); // Text color
     const SCRTEXT: Color = Color::Rgb(230, 230, 250); // Screen text color
@@ -185,8 +183,8 @@ fn draw_main_ui(
     let file_path = file_path.to_string();
 
     let left_stats_text = format!(
-        "File: {}\nWords Read This Session: {}\nTotal Words: {} of {}\nReading Time: {:.2} seconds",
-        file_path.to_string(), words_read, words_read, total_words, reading_time
+        "File: {}\nWords Read This Session: {}\nTotal Words: {} of {}\nReading Time: {:.2} seconds\nCurrent Position: {}",
+        file_path.to_string(), words_read, words_read, total_words, reading_time, current_word_index
     );
     
     let left_stats = Paragraph::new(left_stats_text)
@@ -223,13 +221,14 @@ pub fn run_ui(
     global_speed: u64,          // ✅ Keep global speed
     global_chunk_size: usize,   // ✅ Keep global chunk size
     file_path: String,          // ✅ Correct position
+    mut current_word_index: usize, // ✅ Add last_position
 ) -> usize {
-    let mut current_word_index = 0;
-    let mut paused = false;
+    //let mut current_word_index = 0;
+    //let mut paused = false;
     let mut preferences_mode = false;
     let mut bookmark_mode = false;
-    let mut bookmark = 0;
-    let mut bookmarked = false;
+    //let mut bookmark = 0;
+    //let mut bookmarked = false;
     let mut consume_next_event = false;
     let mut word_delay = Duration::from_millis(60000 / speed);
     let mut last_update = Instant::now();
@@ -261,8 +260,8 @@ pub fn run_ui(
             speed,
             words_read,
             reading_time,
-            bookmarked,
-            bookmark,
+            //bookmarked,
+            //bookmark,
             preferences_mode,
             bookmark_mode,
             pause_mode,
@@ -384,13 +383,13 @@ pub fn run_ui(
                                         terminal.backend_mut().execute(LeaveAlternateScreen).unwrap();
                                         drop(terminal);
 
-                                        run_ui(speed, chunk_size, total_words, words, book_data, global_speed, global_chunk_size, selected_file.clone());
+                                        run_ui(speed, chunk_size, total_words, words, book_data, global_speed, global_chunk_size, selected_file.clone(),current_word_index );
                                         return current_word_index;
                                     }
                                 }
                                 None => {
                                     // ✅ Just restart `run_ui()` to restore UI
-                                    run_ui(speed, chunk_size, total_words, words, book_data, global_speed, global_chunk_size, file_path.clone());
+                                    run_ui(speed, chunk_size, total_words, words, book_data, global_speed, global_chunk_size, file_path.clone(), current_word_index);
                                     return current_word_index;
                                 }
                             }
@@ -441,8 +440,8 @@ pub fn run_ui(
                         speed,
                         words_read,
                         reading_time,
-                        bookmarked,
-                        bookmark,
+                        //bookmarked,
+                        //bookmark,
                         preferences_mode,
                         bookmark_mode,
                         pause_mode,
@@ -475,8 +474,8 @@ pub fn run_ui(
                     speed,
                     words_read,
                     reading_time,
-                    bookmarked,
-                    bookmark,
+                    //bookmarked,
+                    //bookmark,
                     preferences_mode,
                     bookmark_mode,
                     pause_mode,

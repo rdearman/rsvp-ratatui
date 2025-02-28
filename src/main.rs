@@ -2,8 +2,7 @@ mod interface;
 mod utilities;
 use clap::{Arg, Command};
 use crate::utilities::{load_settings, save_settings,file_selector_ui, read_file_content};
-use std::collections::HashMap;
-use serde_json::{json, Value};
+use serde_json::json;
 use std::fs;
 use std::path::Path;
 
@@ -88,6 +87,7 @@ fn main() {
             global_speed,          // ✅ Add missing global_speed
             global_chunk_size,     // ✅ Add missing global_chunk_size
             absolute_path_str.clone(), // ✅ Correct file_path position
+            _last_position,
         );
 
         book_data.entry(absolute_path_str.clone()).or_insert_with(|| json!({}));
