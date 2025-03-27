@@ -415,7 +415,7 @@ pub fn run_ui(
                             word_delay =  Duration::from_millis(60000 / speed);
                         }
                         KeyCode::Down => {
-                            speed += 10;
+                            speed = (speed.saturating_sub(10)).max(1);
                             word_delay =  Duration::from_millis(60000 / speed);
                         }
                         KeyCode::PageUp => {
