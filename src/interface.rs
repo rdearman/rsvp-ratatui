@@ -395,9 +395,6 @@ pub fn run_ui(
                                     return current_word_index;
                                 }
                             }
-
-
-
                         }
                         KeyCode::Char('b') => {
                             if bookmark_mode {
@@ -413,8 +410,14 @@ pub fn run_ui(
                             terminal.clear().unwrap();
                             break;
                         }
-                        KeyCode::Up => speed += 10,
-                        KeyCode::Down => speed = speed.saturating_sub(10),
+                        KeyCode::Up => {
+                            speed += 10;
+                            word_delay =  Duration::from_millis(60000 / speed);
+                        }
+                        KeyCode::Down => {
+                            speed += 10;
+                            word_delay =  Duration::from_millis(60000 / speed);
+                        }
                         KeyCode::PageUp => {
                             speed += 100;
                             word_delay =  Duration::from_millis(60000 / speed);
