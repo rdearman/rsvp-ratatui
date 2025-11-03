@@ -1,3 +1,8 @@
+# Ignore all files and subdirectories within the gemini context folder
+gemini/
+
+
+
 # Ignore backup files (e.g., file.txt~)
 *~
 
