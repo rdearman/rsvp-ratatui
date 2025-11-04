@@ -1,7 +1,8 @@
 mod interface;
 mod utilities;
 use clap::{Arg, Command};
-use crate::utilities::{load_settings, save_settings,file_selector_ui, read_file_content};
+use crate::utilities::{load_settings, save_settings, read_file_content, read_file_sentences};
+use crate::interface::DisplayMode;
 use serde_json::json;
 use std::fs;
 use std::path::Path;
@@ -39,7 +40,7 @@ fn main() {
         .get_matches();
 
     let input_file = matches.get_one::<String>("input").cloned()
-        .or_else(|| file_selector_ui());
+        .or_else(|| utilities::load_file_menu_ui(&book_data));
 
     if let Some(file_path) = input_file {
         let absolute_path = fs::canonicalize(Path::new(&file_path))
@@ -47,11 +48,6 @@ fn main() {
 
         let absolute_path_str = absolute_path.to_string_lossy().to_string();
 
-        let words = read_file_content(&absolute_path_str);
-        let total_words = words.len();
-
-        // ✅ Fix: Restore book data handling
-        // let book_settings = book_data.get(&absolute_path_str).and_then(|b| b.as_object());
         let book_settings = book_data.entry(absolute_path_str.clone()).or_insert_with(|| json!({
             "bookmarks": [],
             "speed": global_speed,
@@ -59,18 +55,35 @@ fn main() {
             "last_position": 0
         }));
 
+        let chunk_size = matches
+            .get_one::<String>("chunk_size")
+            .and_then(|cs| cs.parse().ok())
+            .or_else(|| book_settings.as_object().and_then(|b| b.get("chunk_size")?.as_u64()).map(|cs| cs as usize))
+            .unwrap_or(global_chunk_size);
+
+        let display_mode = book_settings.as_object()
+            .and_then(|b| b.get("display_mode"))
+            .and_then(|dm| dm.as_str())
+            .map(|s| {
+                if s == "sentence" {
+                    DisplayMode::Sentence
+                } else {
+                    DisplayMode::WordChunk(chunk_size)
+                }
+            })
+            .unwrap_or(DisplayMode::WordChunk(chunk_size));
+
+        let words = match display_mode {
+            DisplayMode::WordChunk(_) => read_file_content(&absolute_path_str),
+            DisplayMode::Sentence => read_file_sentences(&absolute_path_str),
+        };
+        let total_words = words.len();
 
         let speed = matches
             .get_one::<String>("speed")
             .and_then(|s| s.parse().ok())
             .or_else(|| book_settings.as_object().and_then(|b| b.get("speed")?.as_u64()))
             .unwrap_or(global_speed);
-
-        let chunk_size = matches
-            .get_one::<String>("chunk_size")
-            .and_then(|cs| cs.parse().ok())
-            .or_else(|| book_settings.as_object().and_then(|b| b.get("chunk_size")?.as_u64()).map(|cs| cs as usize))
-            .unwrap_or(global_chunk_size);
 
         let _last_position = book_settings
             .as_object().and_then(|b| b.get("last_position")?.as_u64())
@@ -80,7 +93,7 @@ fn main() {
         // let final_position = interface::run_ui(speed, chunk_size, total_words, words, &mut book_data, absolute_path_str.clone());        
         let final_position = interface::run_ui(
             speed,
-            chunk_size,
+            display_mode,
             total_words,
             words,
             &mut book_data,
@@ -94,7 +107,15 @@ fn main() {
         if let Some(book) = book_data.get_mut(&absolute_path_str) {
             book["last_position"] = json!(final_position);
             book["speed"] = json!(speed);
-            book["chunk_size"] = json!(chunk_size);
+            if let DisplayMode::WordChunk(size) = display_mode {
+                book["chunk_size"] = json!(size);
+            } else {
+                book["chunk_size"] = json!(global_chunk_size);
+            }
+            book["display_mode"] = match display_mode {
+                DisplayMode::Sentence => json!("sentence"),
+                DisplayMode::WordChunk(_) => json!("word_chunk"),
+            };
         }
         save_settings(global_speed, global_chunk_size, book_data, None, None);
     }

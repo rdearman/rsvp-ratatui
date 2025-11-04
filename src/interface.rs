@@ -1,4 +1,5 @@
 #![allow(unused_mut)]
+use crate::utilities::get_adaptive_chunk_size;
 use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout, Alignment},
@@ -18,16 +19,24 @@ use std::time::{Duration, Instant};
 use crate::utilities::save_settings;
 use ratatui::{Frame}; // , backend::Backend};
 //use std::fs::OpenOptions;
-use crate::utilities::file_selector_ui;
+use crate::utilities;
 use std::collections::HashMap;
 //use crate::json;
 use serde_json::json;use serde_json::Value;
+use tts::{Tts, Backends};
 
+
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum DisplayMode {
+    WordChunk(usize),
+    Sentence,
+}
 
 fn draw_main_ui(
     f: &mut Frame,
     current_word_index: usize,
-    chunk_size: usize,
+    display_mode: DisplayMode,
     words: &[String],
     total_words: usize,
     speed: u64,
@@ -39,6 +48,8 @@ fn draw_main_ui(
     bookmarks_list: &[(usize, String)],
     selected_bookmark: usize,
     file_path: &str, // ✅ Add missing file_path
+    smart_mode: bool,
+    tts_enabled: bool,
 ) {
     // panic!("DEBUG: Passed current_word_index = {}", current_word_index);
     const BGRND: Color = Color::Rgb(10, 34, 171); // Background color
@@ -60,8 +71,7 @@ fn draw_main_ui(
 
     f.render_widget(Block::default().style(Style::default().bg(BGRND)), size);
 
-    // **Quick Keys Block**
-    let quick_keys_text = "[Q]uit | [Space] pause/resume | [L]oad File | [P]references | [B]ookmark | [↑] +10 | [↓] -10 | [PgUp] +100 | [PgDn] -100 | [1-9] chunk size ";
+    let quick_keys_text = "[Q]uit | [Space] pause/resume | [L]oad File | [P]references | [B]ookmark | [S]entence Mode | [↑] +10 | [↓] -10 | [PgUp] +100 | [PgDn] -100 | [1-9] chunk size ";
     let quick_keys = Paragraph::new(quick_keys_text)
         .block(Block::default().borders(Borders::ALL).title("Menu Keys"))
         .style(Style::default().fg(SCRTEXT).bg(BGRND));
@@ -72,7 +82,8 @@ fn draw_main_ui(
     if preferences_mode {
         let preferences_text = format!(
             "Preferences:\nSpeed: {} WPM  [↑] +10 | [↓] -10\nChunk Size: {} [←] -1 | [→] +1\n[Enter] Save | [Esc] Cancel",
-            speed, chunk_size
+            speed,
+            if let DisplayMode::WordChunk(size) = display_mode { size.to_string() } else { "Sentence".to_string() }
         );
 
         let preferences_block = Paragraph::new(preferences_text)
@@ -87,6 +98,7 @@ fn draw_main_ui(
 
     // **BOOKMARK/PAUSE UI (IN BOTTOM SPACER)**    
     if pause_mode {
+        let chunk_size = if let DisplayMode::WordChunk(size) = display_mode { size } else { 1 };
         // Define window for context (20 words before and 20 words after the chunk)
         let before_start = current_word_index.saturating_sub(20);
         let chunk_end = (current_word_index + chunk_size).min(words.len());
@@ -152,7 +164,21 @@ fn draw_main_ui(
 
     // **Text Block**
     let word_display = if current_word_index < words.len() {
-        words[current_word_index..current_word_index + chunk_size.min(words.len() - current_word_index)].join(" ")
+        match display_mode {
+            DisplayMode::WordChunk(chunk_size) => {
+                let display_chunk_size = if smart_mode {
+                    get_adaptive_chunk_size(words, current_word_index, chunk_size)
+                } else {
+                    chunk_size
+                };
+                words[current_word_index..current_word_index + display_chunk_size.min(words.len() - current_word_index)].join(" ")
+            }
+            DisplayMode::Sentence => {
+                // For now, just display the current word.
+                // We will implement sentence splitting later.
+                words[current_word_index].clone()
+            }
+        }
     } else {
         "End of text".to_string()
     };
@@ -194,8 +220,14 @@ fn draw_main_ui(
 
     // **Right Stats**
     let right_stats_text = format!(
-        "\nSpeed: {} WPM\nChunk Size: {}",
-        speed, chunk_size
+        "\nSpeed: {} WPM\nDisplay Mode: {}\nSmart Mode: {}\nTTS: {}",
+        speed,
+        match display_mode {
+            DisplayMode::WordChunk(size) => format!("Chunk ({})", size),
+            DisplayMode::Sentence => "Sentence".to_string(),
+        },
+        if smart_mode { "On" } else { "Off" },
+        if tts_enabled { "On" } else { "Off" }
     );
     let right_stats = Paragraph::new(right_stats_text)
         .block(Block::default().borders(Borders::ALL).title("Settings"))
@@ -203,7 +235,11 @@ fn draw_main_ui(
     f.render_widget(right_stats, stats_split[1]);
 
     // **Progress Bar**
-    let progress_ratio = current_word_index as f64 / total_words as f64;
+    let progress_ratio = if total_words > 0 {
+        current_word_index as f64 / total_words as f64
+    } else {
+        0.0
+    };
     // let progress_ratio = words_read as f64 / total_words as f64;
     // println!("DEBUG: words_read = {}, total_words = {}, progress_ratio = {}", words_read, total_words, progress_ratio);
     let progress_bar = Gauge::default()
@@ -215,285 +251,1120 @@ fn draw_main_ui(
 
 
 pub fn run_ui(
+
+
     mut speed: u64,
-    mut chunk_size: usize,
+
+
+    mut display_mode: DisplayMode,
+
+
     mut total_words: usize,
+
+
     mut words: Vec<String>,
+
+
     book_data: &mut HashMap<String, Value>,
-    global_speed: u64,          // ✅ Keep global speed
-    global_chunk_size: usize,   // ✅ Keep global chunk size
-    file_path: String,          // ✅ Correct position
-    mut current_word_index: usize, // ✅ Add last_position
+
+
+    global_speed: u64,
+
+
+    global_chunk_size: usize,
+
+
+    mut file_path: String,
+
+
+    mut current_word_index: usize,
+
+
 ) -> usize {
-    //let mut current_word_index = 0;
-    //let mut paused = false;
+
+
+    let mut chunk_size = if let DisplayMode::WordChunk(size) = display_mode { size } else { 1 };
+
+
+
+
+
     let mut preferences_mode = false;
+
+
     let mut bookmark_mode = false;
-    //let mut bookmark = 0;
-    //let mut bookmarked = false;
+
+
     let mut consume_next_event = false;
+
+
     let mut word_delay = Duration::from_millis(60000 / speed);
+
+
     let mut last_update = Instant::now();
 
+
+
+
+
     let mut stdout = stdout();
+
+
     terminal::enable_raw_mode().unwrap();
+
+
     stdout.execute(terminal::EnterAlternateScreen).unwrap();
+
+
     let backend = CrosstermBackend::new(stdout);
+
+
     let mut terminal = Terminal::new(backend).unwrap();
 
+
+
+
+
     let mut words_read = 0;
+
+
     let mut reading_time = 0.0;
-    //let mut bookmarks_list: Vec<(usize, String)> = vec![];
+
 
     let mut bookmarks_list: Vec<(usize, String)> = vec![];
-    //let file_path = book_data.keys().next().cloned().unwrap_or_default();
-    let file_path = file_path.clone(); // Ensure we're using the correct file
-    
+
+
+    let mut file_path = file_path.clone(); // Ensure we're using the correct file
+
+
+
+
+
     let mut selected_bookmark = 0;
+
+
     let mut pause_mode = false;
 
-    terminal.draw(|f| {
-        draw_main_ui(
-            f,
-            current_word_index,
-            chunk_size,
-            &words,
-            total_words,
-            speed,
-            words_read,
-            reading_time,
-            //bookmarked,
-            //bookmark,
-            preferences_mode,
-            bookmark_mode,
-            pause_mode,
-            &bookmarks_list,
-            selected_bookmark,
-            &file_path, // ✅ Fix missing file_path
-        )
-    }).unwrap();
+
+    let mut smart_mode = false;
+
+
+    let mut tts_enabled = false;
+
+
+    let mut tts = Tts::new(tts::Backends::SpeechDispatcher).unwrap();
+
+
+
+
+
+    terminal
+
+
+        .draw(|f| {
+
+
+            draw_main_ui(
+
+
+                f,
+
+
+                current_word_index,
+
+
+                display_mode,
+
+
+                &words,
+
+
+                total_words,
+
+
+                speed,
+
+
+                words_read,
+
+
+                reading_time,
+
+
+                preferences_mode,
+
+
+                bookmark_mode,
+
+
+                pause_mode,
+
+
+                &bookmarks_list,
+
+
+                selected_bookmark,
+
+
+                &file_path,
+
+
+                smart_mode,
+
+
+                tts_enabled,
+
+
+            )
+
+
+        })
+
+
+        .unwrap();
+
+
+
+
 
     loop {
+
+
         if event::poll(Duration::from_millis(10)).unwrap() {
+
+
             if let Event::Key(KeyEvent { code, .. }) = event::read().unwrap() {
+
+
                 if consume_next_event {
+
+
                     consume_next_event = false;
+
+
                     continue;
+
+
                 }
+
+
+
+
 
                 if bookmark_mode {
-                    match code {
-                        KeyCode::Up => {
-                            if selected_bookmark > 0 {
-                                selected_bookmark -= 1;
-                            }
-                        }
-                        KeyCode::Down => {
-                            if selected_bookmark < bookmarks_list.len() {
-                                selected_bookmark += 1;
-                            }
-                        }
-                        KeyCode::Enter => {
-                            if selected_bookmark == 0 {
-                                // let preview = words
-                                //     .get(current_word_index..(current_word_index + 5).min(words.len()))
-                                //     .unwrap_or(&[])
-                                //     .join(" ");
-                                // bookmarks_list.push((current_word_index, preview));
-                                let preview = words
-                                    .get(current_word_index..(current_word_index + 5).min(words.len()))
-                                    .unwrap_or(&[])
-                                    .join(" ");
-                                // bookmarks_list.push((current_word_index, preview));
-                                bookmarks_list.push((current_word_index, preview.clone())); // Clone before move
-                                // ✅ Store bookmarks in book_data
 
-                                // let file_path = book_data.keys().next().cloned().unwrap_or_default();
-                                let file_path = file_path.clone(); // ✅ Use the correct file_path passed to run_ui()
-                                // let book_entry = book_data.entry(file_path.clone()).or_insert_with(|| json!({ "bookmarks": [] }));
-                                let book_entry = book_data.entry(file_path.clone()).or_insert_with(|| json!({
-                                    "bookmarks": [],
-                                    "speed": speed,
-                                    "chunk_size": chunk_size,
-                                    "last_position": 0
-                                }));
+
+                    match code {
+
+
+                        KeyCode::Up => {
+
+
+                            if selected_bookmark > 0 {
+
+
+                                selected_bookmark -= 1;
+
+
+                            }
+
+
+                        }
+
+
+                        KeyCode::Down => {
+
+
+                            if selected_bookmark < bookmarks_list.len() {
+
+
+                                selected_bookmark += 1;
+
+
+                            }
+
+
+                        }
+
+
+                        KeyCode::Enter => {
+
+
+                            if selected_bookmark == 0 {
+
+
+                                let preview = words
+
+
+                                    .get(current_word_index..(current_word_index + 5).min(words.len()))
+
+
+                                    .unwrap_or(&[])
+
+
+                                    .join(" ");
+
+
+                                bookmarks_list.push((current_word_index, preview.clone()));
+
+
+
+
+
+                                let file_path = file_path.clone();
+
+
+                                let book_entry = book_data.entry(file_path.clone()).or_insert_with(|| {
+
+
+                                    json!({
+
+
+                                        "bookmarks": [],
+
+
+                                        "speed": speed,
+
+
+                                        "chunk_size": chunk_size,
+
+
+                                        "last_position": 0
+
+
+                                    })
+
+
+                                });
+
+
+
+
 
                                 if !book_entry["bookmarks"].is_array() {
+
+
                                     book_entry["bookmarks"] = json!([]);
+
+
                                 }
-                                
-                                // Add the new bookmark
+
+
+
+
+
                                 if let Some(bookmarks) = book_entry["bookmarks"].as_array_mut() {
+
+
                                     bookmarks.push(json!({ "position": current_word_index, "preview": preview.clone() }));
+
+
                                 }
-                                // println!("Saving bookmarks: {:?}", book_entry["bookmarks"]);
-                                save_settings(speed, chunk_size, book_data.clone(), None, None);
+
+
+                                if let DisplayMode::WordChunk(size) = display_mode {
+
+
+                                    save_settings(speed, size, book_data.clone(), None, None);
+
+
+                                } else {
+
+
+                                    save_settings(speed, 1, book_data.clone(), None, None);
+
+
+                                }
+
 
                             } else {
+
+
                                 current_word_index = bookmarks_list[selected_bookmark - 1].0;
+
+
                             }
+
+
                             bookmark_mode = false;
+
+
                         }
+
+
                         KeyCode::Esc => bookmark_mode = false,
-                        _ => {}
-                    }
-                }
 
-                if preferences_mode {
+
+                        _ => {}
+
+
+                    }
+
+
+                } else if preferences_mode {
+
+
                     match code {
+
+
                         KeyCode::Up => speed += 10,
-                        KeyCode::Down => speed = (speed.saturating_sub(10)).max(1),
-                        KeyCode::Right => chunk_size += 1,
-                        KeyCode::Left => chunk_size = chunk_size.saturating_sub(1),
-                        KeyCode::Enter => {
-                            word_delay = Duration::from_millis(60000 / speed);
-                            save_settings(speed, chunk_size, book_data.clone(), None, None);
-                            preferences_mode = false;
-                        }
-                        KeyCode::Esc => preferences_mode = false,
-                        _ => {}
-                    }
-                } else {
-                    match code {
-                        KeyCode::Char(' ') => pause_mode = !pause_mode,
-                        KeyCode::Char('p') => preferences_mode = true,
-                        KeyCode::Char('l') => {
-                            match file_selector_ui() {
-                                Some(selected_file) => {
-                                    if let Ok(content) = std::fs::read_to_string(&selected_file) {
-                                        let words = content.split_whitespace().map(String::from).collect::<Vec<_>>();
-                                        let total_words = words.len();
 
-                                        let book_entry = book_data.entry(selected_file.clone()).or_insert_with(|| json!({
-                                            "bookmarks": [],
-                                            "speed": speed,
-                                            "chunk_size": chunk_size,
-                                            "last_position": 0
+
+                        KeyCode::Down => speed = (speed.saturating_sub(10)).max(1),
+
+
+                        KeyCode::Right => {
+
+
+                            if let DisplayMode::WordChunk(size) = &mut display_mode {
+
+
+                                *size += 1;
+
+
+                            }
+
+
+                        }
+
+
+                        KeyCode::Left => {
+
+
+                            if let DisplayMode::WordChunk(size) = &mut display_mode {
+
+
+                                *size = size.saturating_sub(1);
+
+
+                            }
+
+
+                        }
+
+
+                        KeyCode::Enter => {
+
+
+                            word_delay = Duration::from_millis(60000 / speed);
+
+
+                            if let DisplayMode::WordChunk(size) = display_mode {
+
+
+                                save_settings(speed, size, book_data.clone(), None, None);
+
+
+                            } else {
+
+
+                                save_settings(speed, 1, book_data.clone(), None, None);
+
+
+                            }
+
+
+                            preferences_mode = false;
+
+
+                        }
+
+
+                        KeyCode::Esc => preferences_mode = false,
+
+
+                        _ => {}
+
+
+                    }
+
+
+                } else {
+
+
+                    match code {
+
+
+                        KeyCode::Char(' ') => {
+
+
+                            pause_mode = !pause_mode;
+
+
+                            if pause_mode {
+
+
+                                let _ = tts.stop();
+
+
+                            }
+
+
+                        }
+
+
+                        KeyCode::Char('p') => preferences_mode = true,
+
+
+                        KeyCode::Char('m') => smart_mode = !smart_mode,
+
+
+                        KeyCode::Char('t') => tts_enabled = !tts_enabled,
+
+
+                        KeyCode::Char('s') => {
+
+
+                            display_mode = if display_mode == DisplayMode::Sentence {
+
+
+                                DisplayMode::WordChunk(1)
+
+
+                            } else {
+
+
+                                DisplayMode::Sentence
+
+
+                            };
+
+
+                            words = match display_mode {
+
+
+                                DisplayMode::WordChunk(_) => utilities::read_file_content(&file_path),
+
+
+                                DisplayMode::Sentence => utilities::read_file_sentences(&file_path),
+
+
+                            };
+
+
+                            total_words = words.len();
+
+
+                            current_word_index = 0;
+
+
+                        }
+
+
+                        KeyCode::Char('l') => {
+
+
+                            match utilities::load_file_menu_ui(book_data) {
+
+
+                                Some(selected_file) => {
+
+
+                                    words = utilities::read_file_content(&selected_file);
+
+
+                                    total_words = words.len();
+
+
+                                    file_path = selected_file.clone();
+
+
+
+
+
+                                    let book_entry =
+
+
+                                        book_data.entry(selected_file.clone()).or_insert_with(|| {
+
+
+                                            json!({
+
+
+                                                "bookmarks": [],
+
+
+                                                "speed": global_speed,
+
+
+                                                "chunk_size": global_chunk_size,
+
+
+                                                "last_position": 0
+
+
+                                            })
+
+
+                                        });
+
+
+
+
+
+                                    speed = book_entry["speed"].as_u64().unwrap_or(global_speed);
+
+
+                                    chunk_size = book_entry["chunk_size"].as_u64().unwrap_or(global_chunk_size as u64) as usize;
+
+
+                                    display_mode = DisplayMode::WordChunk(chunk_size);
+
+
+                                    current_word_index = book_entry["last_position"].as_u64().unwrap_or(0) as usize;
+
+
+
+
+
+                                    bookmarks_list.clear();
+
+
+                                    if let Some(bookmarks) = book_entry["bookmarks"].as_array() {
+
+
+                                        bookmarks_list.extend(bookmarks.iter().filter_map(|bm| {
+
+
+                                            Some((
+
+
+                                                bm.get("position")?.as_u64()? as usize,
+
+
+                                                bm.get("preview")?.as_str()?.to_string(),
+
+
+                                            ))
+
+
                                         }));
 
-                                        let mut bookmarks_list: Vec<(usize, String)> = vec![];
-                                        if let Some(bookmarks) = book_entry["bookmarks"].as_array() {
-                                            bookmarks_list = bookmarks.iter().filter_map(|bm| {
-                                                Some((
-                                                    bm.get("position")?.as_u64()? as usize,
-                                                    bm.get("preview")?.as_str()?.to_string(),
-                                                ))
-                                            }).collect();
-                                        }
 
-                                        terminal::disable_raw_mode().unwrap();
-                                        terminal.backend_mut().execute(LeaveAlternateScreen).unwrap();
-                                        drop(terminal);
-
-                                        run_ui(speed, chunk_size, total_words, words, book_data, global_speed, global_chunk_size, selected_file.clone(),current_word_index );
-                                        return current_word_index;
                                     }
+
+
                                 }
-                                None => {
-                                    // ✅ Just restart `run_ui()` to restore UI
-                                    run_ui(speed, chunk_size, total_words, words, book_data, global_speed, global_chunk_size, file_path.clone(), current_word_index);
-                                    return current_word_index;
-                                }
+
+
+                                None => {}
+
+
                             }
+
+
+                            terminal
+
+
+                                .draw(|f| {
+
+
+                                    draw_main_ui(
+
+
+                                        f,
+
+
+                                        current_word_index,
+
+
+                                        display_mode,
+
+
+                                        &words,
+
+
+                                        total_words,
+
+
+                                        speed,
+
+
+                                        words_read,
+
+
+                                        reading_time,
+
+
+                                        preferences_mode,
+
+
+                                        bookmark_mode,
+
+
+                                        pause_mode,
+
+
+                                        &bookmarks_list,
+
+
+                                        selected_bookmark,
+
+
+                                        &file_path,
+
+
+                                        smart_mode,
+
+
+                                        tts_enabled,
+
+
+                                    )
+
+
+                                })
+
+
+                                .unwrap();
+
+
                         }
+
+
                         KeyCode::Char('b') => {
+
+
                             if bookmark_mode {
+
+
                                 bookmark_mode = false;
+
+
                             } else {
+
+
                                 bookmark_mode = true;
+
+
                                 selected_bookmark = 0;
+
+
                             }
+
+
                         }
+
+
                         KeyCode::Char('q') => {
+
+
+                            let _ = tts.stop();
+
+
                             terminal::disable_raw_mode().unwrap();
+
+
                             terminal.backend_mut().execute(LeaveAlternateScreen).unwrap();
+
+
                             terminal.clear().unwrap();
+
+
                             break;
+
+
                         }
+
+
                         KeyCode::Up => {
+
+
                             speed += 10;
-                            word_delay =  Duration::from_millis(60000 / speed);
-                        }
-                        KeyCode::Down => {
-                            speed = (speed.saturating_sub(10)).max(1);
-                            word_delay =  Duration::from_millis(60000 / speed);
-                        }
-                        KeyCode::PageUp => {
-                            speed += 100;
-                            word_delay =  Duration::from_millis(60000 / speed);
-                        }
-                        KeyCode::PageDown => {
-                            speed = (speed.saturating_sub(100)).max(1);
+
+
                             word_delay = Duration::from_millis(60000 / speed);
+
+
                         }
-                        KeyCode::Right => current_word_index = (current_word_index + chunk_size).min(words.len()),
-                        KeyCode::Left => current_word_index = current_word_index.saturating_sub(chunk_size),
+
+
+                        KeyCode::Down => {
+
+
+                            speed = (speed.saturating_sub(10)).max(1);
+
+
+                            word_delay = Duration::from_millis(60000 / speed);
+
+
+                        }
+
+
+                        KeyCode::PageUp => {
+
+
+                            speed += 100;
+
+
+                            word_delay = Duration::from_millis(60000 / speed);
+
+
+                        }
+
+
+                        KeyCode::PageDown => {
+
+
+                            speed = (speed.saturating_sub(100)).max(1);
+
+
+                            word_delay = Duration::from_millis(60000 / speed);
+
+
+                        }
+
+
+                        KeyCode::Right => {
+
+
+                            if let DisplayMode::WordChunk(size) = display_mode {
+
+
+                                current_word_index = (current_word_index + size).min(words.len());
+
+
+                            } else {
+
+
+                                current_word_index = (current_word_index + 1).min(words.len());
+
+
+                            }
+
+
+                        }
+
+
+                        KeyCode::Left => {
+
+
+                            if let DisplayMode::WordChunk(size) = display_mode {
+
+
+                                current_word_index = current_word_index.saturating_sub(size);
+
+
+                            } else {
+
+
+                                current_word_index = current_word_index.saturating_sub(1);
+
+
+                            }
+
+
+                        }
+
+
                         KeyCode::Char(c) if c.is_digit(10) => {
-                            chunk_size = c.to_digit(10).unwrap() as usize;
+
+
+                            display_mode = DisplayMode::WordChunk(c.to_digit(10).unwrap() as usize);
+
+
                         }
+
+
                         _ => {}
+
+
                     }
+
+
                 }
 
-                terminal.draw(|f| {
-                    draw_main_ui(
-                        f,
-                        current_word_index,
-                        chunk_size,
-                        &words,
-                        total_words,
-                        speed,
-                        words_read,
-                        reading_time,
-                        //bookmarked,
-                        //bookmark,
-                        preferences_mode,
-                        bookmark_mode,
-                        pause_mode,
-                        &bookmarks_list,
-                        selected_bookmark,
-                        &file_path, // ✅ Fix missing file_path
-                    )
-                }).unwrap();
+
+
+
+
+                terminal
+
+
+                    .draw(|f| {
+
+
+                        draw_main_ui(
+
+
+                            f,
+
+
+                            current_word_index,
+
+
+                            display_mode,
+
+
+                            &words,
+
+
+                            total_words,
+
+
+                            speed,
+
+
+                            words_read,
+
+
+                            reading_time,
+
+
+                            preferences_mode,
+
+
+                            bookmark_mode,
+
+
+                            pause_mode,
+
+
+                            &bookmarks_list,
+
+
+                            selected_bookmark,
+
+
+                            &file_path,
+
+
+                            smart_mode,
+
+
+                            tts_enabled,
+
+
+                        )
+
+
+                    })
+
+
+                    .unwrap();
+
 
             }
+
+
         }
+
+
+
+
 
         if !pause_mode && !preferences_mode && last_update.elapsed() >= word_delay {
+
+
             last_update = Instant::now();
+
+
             if current_word_index < words.len() {
-                current_word_index += chunk_size;
-                words_read += chunk_size;
+
+
+                let advance_chunk_size = if smart_mode {
+
+
+                    match display_mode {
+
+
+                        DisplayMode::WordChunk(chunk_size) => get_adaptive_chunk_size(&words, current_word_index, chunk_size),
+
+
+                        DisplayMode::Sentence => 1, // TODO
+
+
+                    }
+
+
+                } else {
+
+
+                    match display_mode {
+
+
+                        DisplayMode::WordChunk(chunk_size) => chunk_size,
+
+
+                        DisplayMode::Sentence => 1, // TODO
+
+
+                    }
+
+
+                };
+
+
+                current_word_index += advance_chunk_size;
+
+
+                words_read += advance_chunk_size;
+
+
                 reading_time += word_delay.as_secs_f64();
+
+
+
+
+
+                if tts_enabled {
+
+
+                    let word_display = match display_mode {
+
+
+                        DisplayMode::WordChunk(chunk_size) => {
+
+
+                            let display_chunk_size = if smart_mode {
+
+
+                                get_adaptive_chunk_size(&words, current_word_index, chunk_size)
+
+
+                            } else {
+
+
+                                chunk_size
+
+
+                            };
+
+
+                            words[current_word_index..current_word_index + display_chunk_size.min(words.len() - current_word_index)]
+
+
+                                .join(" ")
+
+
+                        }
+
+
+                        DisplayMode::Sentence => words[current_word_index].clone(),
+
+
+                    };
+
+
+                    let _ = tts.speak(word_display, true);
+
+
+                }
+
+
             } else {
-                break;
+
+
+                // Don't break here. Just stop advancing.
+
+
+                // The user can still quit or load a new file.
+
+
             }
 
-            terminal.draw(|f| {
-                draw_main_ui(
-                    f,
-                    current_word_index,
-                    chunk_size,
-                    &words,
-                    total_words,
-                    speed,
-                    words_read,
-                    reading_time,
-                    //bookmarked,
-                    //bookmark,
-                    preferences_mode,
-                    bookmark_mode,
-                    pause_mode,
-                    &bookmarks_list,
-                    selected_bookmark,
-                    &file_path, // ✅ Fix missing file_path
-                )
-            }).unwrap();
+
+
+
+
+            terminal
+
+
+                .draw(|f| {
+
+
+                    draw_main_ui(
+
+
+                        f,
+
+
+                        current_word_index,
+
+
+                        display_mode,
+
+
+                        &words,
+
+
+                        total_words,
+
+
+                        speed,
+
+
+                        words_read,
+
+
+                        reading_time,
+
+
+                        preferences_mode,
+
+
+                        bookmark_mode,
+
+
+                        pause_mode,
+
+
+                        &bookmarks_list,
+
+
+                        selected_bookmark,
+
+
+                        &file_path,
+
+
+                        smart_mode,
+
+
+                        tts_enabled,
+
+
+                    )
+
+
+                })
+
+
+                .unwrap();
+
+
         }
+
+
     }
 
+
+
+
+
+    let _ = tts.stop();
+
+
+
+
+
     terminal::disable_raw_mode().unwrap();
+
+
+
+
+
     terminal.backend_mut().execute(LeaveAlternateScreen).unwrap();
+
+
+
+
+
     return current_word_index;
+
+
 }
+
+
+
 

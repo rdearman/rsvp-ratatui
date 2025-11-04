@@ -18,3 +18,5 @@ lopdf = "0.32"
 xml-rs = "0.8"     # For ODT XML parsing
 serde_json = "*"
 once_cell = "1.18"  # ✅ Ensure once_cell is installed
+unicode-segmentation = "1.10.1"
+tts = "0.26.3"

@@ -1,4 +1,5 @@
 #![allow(unused_mut)]
+use unicode_segmentation::UnicodeSegmentation;
 use std::fs;
 use std::io::{Read, stdout};
 use dirs_next::home_dir;
@@ -22,7 +23,7 @@ use std::io::Write ;
 /// List of supported file types
 const SUPPORTED_FILE_TYPES: &[&str] = &["pdf",  "docx", "odt", "txt", "html", "htm", "md"]; // Removed "epub" because it was crashing
 
-pub fn file_selector_ui() -> Option<String> {
+pub fn browse_files_ui() -> Option<String> {
     let mut current_dir = std::env::current_dir().expect("Failed to get current directory");
     let mut file_entries = get_file_entries(&current_dir);
     let mut selected_index = 0;
@@ -162,12 +163,15 @@ fn get_file_entries(dir: &std::path::Path) -> Vec<String> {
 
 
 /* supports: PDF, docx, txt, html, MD */
-pub fn read_file_content(file_path: &str) -> Vec<String> {
+pub fn get_content(file_path: &str) -> String {
     if file_path.ends_with(".pdf") {
         // Extract text from PDF
         match extract_text(file_path) {
-            Ok(text) => text.split_whitespace().map(String::from).collect(),
-            Err(_) => panic!("Failed to extract text from PDF"),
+            Ok(text) => text,
+            Err(e) => {
+                eprintln!("Failed to extract text from PDF '{}': {}", file_path, e);
+                String::new()
+            },
         }
     } else if file_path.ends_with(".epub") {
         // Extract text from EPUB
@@ -178,7 +182,7 @@ pub fn read_file_content(file_path: &str) -> Vec<String> {
                     text.push_str(&page);
                     let _ = doc.go_next();
                 }
-                text.split_whitespace().map(String::from).collect()
+                text
             }
             Err(_) => panic!("Failed to extract text from EPUB"),
         }
@@ -206,31 +210,28 @@ pub fn read_file_content(file_path: &str) -> Vec<String> {
                 break;
             }
         }
-
-    text.split_whitespace().map(String::from).collect()
+        text
     } else if file_path.ends_with(".html") || file_path.ends_with(".htm") {
         // Extract text from HTML
         let content = fs::read_to_string(file_path).expect("Failed to read HTML file");
         let document = Html::parse_document(&content);
         let selector = Selector::parse("body").unwrap();
-        let text = document
+        document
             .select(&selector)
             .map(|e| e.text().collect::<Vec<_>>().join(" "))
             .collect::<Vec<String>>()
-            .join(" ");
-        text.split_whitespace().map(String::from).collect()
+            .join(" ")
     } else if file_path.ends_with(".md") {
         // Extract text from Markdown
         let content = fs::read_to_string(file_path).expect("Failed to read Markdown file");
         let parser = Parser::new_ext(&content, Options::all());
-        let text = parser
+        parser
             .filter_map(|event| match event {
                 Event::Text(t) => Some(t.to_string()),
                 _ => None,
             })
             .collect::<Vec<String>>()
-            .join(" ");
-        text.split_whitespace().map(String::from).collect()
+            .join(" ")
     } else if file_path.ends_with(".odt") {
         // Extract text from Open Document Format
         let file = File::open(file_path).expect("Failed to open ODT file");
@@ -256,21 +257,152 @@ pub fn read_file_content(file_path: &str) -> Vec<String> {
                 break;
             }
         }
-
-        text.split_whitespace().map(String::from).collect()
-
+        text
     } else {
         // Default to plain text files
         fs::read_to_string(file_path)
             .expect("Failed to read input file")
-            .split_whitespace()
-            .map(String::from)
-            .collect::<Vec<_>>()
     }
+}
 
+pub fn read_file_content(file_path: &str) -> Vec<String> {
+    get_content(file_path)
+        .split_whitespace()
+        .map(String::from)
+        .collect::<Vec<_>>()
+}
+
+pub fn read_file_sentences(file_path: &str) -> Vec<String> {
+    get_content(file_path)
+        .unicode_sentences()
+        .map(String::from)
+        .collect::<Vec<_>>()
 }
 
 
+pub fn load_file_menu_ui(book_data: &HashMap<String, Value>) -> Option<String> {
+    let mut menu_options = vec!["Browse Files".to_string()];
+    let mut recent_files: Vec<String> = book_data.keys().cloned().collect();
+    recent_files.sort(); // Sort alphabetically for now
+
+    if !recent_files.is_empty() {
+        menu_options.push("Recent Files".to_string());
+    }
+
+    let backend = ratatui::backend::CrosstermBackend::new(stdout());
+    let mut terminal = Terminal::new(backend).unwrap();
+
+    struct RawModeGuard;
+    impl Drop for RawModeGuard {
+        fn drop(&mut self) {
+            let _ = terminal::disable_raw_mode();
+        }
+    }
+    let _guard = RawModeGuard;
+
+    terminal::enable_raw_mode().unwrap();
+    terminal.clear().unwrap();
+
+    let mut selected_index = 0;
+    let mut in_recent_files_menu = false;
+    let mut selected_recent_file_index = 0;
+
+    loop {
+        terminal.draw(|f| {
+            let size = f.area();
+            let items: Vec<ListItem> = if in_recent_files_menu {
+                recent_files
+                    .iter()
+                    .enumerate()
+                    .map(|(i, entry)| {
+                        if i == selected_recent_file_index {
+                            ListItem::new(format!("=> {}", entry))
+                                .style(Style::default().fg(Color::Black).bg(Color::Yellow))
+                        } else {
+                            ListItem::new(entry.clone())
+                        }
+                    })
+                    .collect()
+            } else {
+                menu_options
+                    .iter()
+                    .enumerate()
+                    .map(|(i, entry)| {
+                        if i == selected_index {
+                            ListItem::new(format!("=> {}", entry))
+                                .style(Style::default().fg(Color::Black).bg(Color::Yellow))
+                        } else {
+                            ListItem::new(entry.clone())
+                        }
+                    })
+                    .collect()
+            };
+
+            let title = if in_recent_files_menu { "Recent Files" } else { "Load File" };
+            let list = List::new(items)
+                .block(Block::default().borders(Borders::ALL).title(title));
+
+            f.render_widget(list, size);
+        }).unwrap();
+
+        if let Ok(event::Event::Key(KeyEvent { code, .. })) = event::read() {
+            match code {
+                KeyCode::Up => {
+                    if in_recent_files_menu {
+                        if selected_recent_file_index > 0 {
+                            selected_recent_file_index -= 1;
+                        }
+                    } else {
+                        if selected_index > 0 {
+                            selected_index -= 1;
+                        }
+                    }
+                }
+                KeyCode::Down => {
+                    if in_recent_files_menu {
+                        if selected_recent_file_index < recent_files.len() - 1 {
+                            selected_recent_file_index += 1;
+                        }
+                    } else {
+                        if selected_index < menu_options.len() - 1 {
+                            selected_index += 1;
+                        }
+                    }
+                }
+                KeyCode::Enter => {
+                    if in_recent_files_menu {
+                        terminal.clear().unwrap();
+                        terminal::disable_raw_mode().unwrap();
+                        return Some(recent_files[selected_recent_file_index].clone());
+                    } else {
+                        match menu_options[selected_index].as_str() {
+                            "Browse Files" => {
+                                terminal.clear().unwrap();
+                                terminal::disable_raw_mode().unwrap();
+                                return browse_files_ui();
+                            }
+                            "Recent Files" => {
+                                in_recent_files_menu = true;
+                                selected_recent_file_index = 0;
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                KeyCode::Esc => {
+                    if in_recent_files_menu {
+                        in_recent_files_menu = false;
+                    } else {
+                        terminal.clear().unwrap();
+                        terminal::disable_raw_mode().unwrap();
+                        return None;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+}
 
 /// Save settings to a JSON file
 
@@ -381,6 +513,38 @@ pub fn save_settings(
             }
         }
     }
+}
+
+/// Adjusts the chunk size based on the length of the words.
+pub fn get_adaptive_chunk_size(
+    words: &[String],
+    current_index: usize,
+    base_chunk_size: usize,
+) -> usize {
+    if current_index >= words.len() {
+        return base_chunk_size;
+    }
+
+    let mut total_chars = 0;
+    let mut num_words = 0;
+
+    // A simple heuristic: try to fit a certain number of characters in a chunk.
+    // Let's aim for an average of 5 characters per word in the base chunk size.
+    let target_chars = base_chunk_size * 5;
+
+    for i in 0..base_chunk_size * 2 { // Check up to twice the base chunk size
+        if current_index + i < words.len() {
+            total_chars += words[current_index + i].len();
+            num_words += 1;
+            if total_chars > target_chars {
+                break;
+            }
+        } else {
+            break;
+        }
+    }
+
+    num_words.max(1) // Always return at least 1.
 }
 
 
