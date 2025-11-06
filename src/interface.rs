@@ -23,7 +23,7 @@ use crate::utilities;
 use std::collections::HashMap;
 //use crate::json;
 use serde_json::json;use serde_json::Value;
-use tts::{Tts, Backends};
+use tts::{Tts};
 
 
 
@@ -71,7 +71,7 @@ fn draw_main_ui(
 
     f.render_widget(Block::default().style(Style::default().bg(BGRND)), size);
 
-    let quick_keys_text = "[Q]uit | [Space] pause/resume | [L]oad File | [P]references | [B]ookmark | [S]entence Mode | [↑] +10 | [↓] -10 | [PgUp] +100 | [PgDn] -100 | [1-9] chunk size ";
+    let quick_keys_text = "[Q]uit | [Space] pause/resume | [L]oad File | [W]eb | [P]references | [B]ookmark | [S]entence Mode | [↑] +10 | [↓] -10 | [PgUp] +100 | [PgDn] -100 | [1-9] chunk size ";
     let quick_keys = Paragraph::new(quick_keys_text)
         .block(Block::default().borders(Borders::ALL).title("Menu Keys"))
         .style(Style::default().fg(SCRTEXT).bg(BGRND));
@@ -751,6 +751,20 @@ pub fn run_ui(
                         }
 
 
+                        KeyCode::Char('w') => {
+                            if let Some(url) = utilities::get_url_ui() {
+                                if let Ok(content) = utilities::get_content_from_url(&url) {
+                                    words = content.split_whitespace().map(String::from).collect();
+                                    total_words = words.len();
+                                    current_word_index = 0;
+                                    file_path = url;
+                                }
+                            }
+                            terminal.clear().unwrap();
+                            terminal::enable_raw_mode().unwrap();
+                        }
+
+
                         KeyCode::Char('l') => {
 
 
@@ -851,6 +865,8 @@ pub fn run_ui(
 
 
                             }
+                            terminal.clear().unwrap();
+                            terminal::enable_raw_mode().unwrap();
 
 
                             terminal

@@ -5,7 +5,8 @@ use std::io::{Read, stdout};
 use dirs_next::home_dir;
 use crossterm::event::{self, KeyCode, KeyEvent};
 use crossterm::terminal;
-use ratatui::widgets::{Block, Borders, List, ListItem};
+use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph};
+
 use ratatui::style::{Style, Color};
 use ratatui::Terminal;
 use epub::doc::EpubDoc;
@@ -120,7 +121,6 @@ pub fn browse_files_ui() -> Option<String> {
                 }
                 KeyCode::Esc => {
                     // ✅ Properly restore the UI when exiting
-                    terminal.clear().unwrap();
                     terminal::disable_raw_mode().unwrap();
                     return None;
                 }
@@ -393,7 +393,6 @@ pub fn load_file_menu_ui(book_data: &HashMap<String, Value>) -> Option<String> {
                     if in_recent_files_menu {
                         in_recent_files_menu = false;
                     } else {
-                        terminal.clear().unwrap();
                         terminal::disable_raw_mode().unwrap();
                         return None;
                     }
@@ -547,12 +546,72 @@ pub fn get_adaptive_chunk_size(
     num_words.max(1) // Always return at least 1.
 }
 
+pub fn get_content_from_url(url: &str) -> Result<String, reqwest::Error> {
+    let body = reqwest::blocking::get(url)?.text()?;
+    let document = Html::parse_document(&body);
+    let selector = Selector::parse("body").unwrap();
+    let text = document
+        .select(&selector)
+        .map(|e| e.text().collect::<Vec<_>>().join(" "))
+        .collect::<Vec<String>>()
+        .join(" ");
+    Ok(text)
+}
+
+pub fn get_url_ui() -> Option<String> {
+    let backend = ratatui::backend::CrosstermBackend::new(stdout());
+    let mut terminal = Terminal::new(backend).unwrap();
+
+    struct RawModeGuard;
+    impl Drop for RawModeGuard {
+        fn drop(&mut self) {
+            let _ = terminal::disable_raw_mode();
+        }
+    }
+    let _guard = RawModeGuard;
+
+    terminal::enable_raw_mode().unwrap();
+    terminal.clear().unwrap();
+
+    let mut url = String::new();
+
+    loop {
+        terminal.draw(|f| {
+            let size = f.area();
+            let input = Paragraph::new(url.as_str())
+                .block(Block::default().borders(Borders::ALL).title("Enter URL"));
+            f.render_widget(input, size);
+        }).unwrap();
+
+        if let Ok(event::Event::Key(KeyEvent { code, .. })) = event::read() {
+            match code {
+                KeyCode::Enter => {
+                    terminal.clear().unwrap();
+                    terminal::disable_raw_mode().unwrap();
+                    return Some(url);
+                }
+                KeyCode::Char(c) => {
+                    url.push(c);
+                }
+                KeyCode::Backspace => {
+                    url.pop();
+                }
+                KeyCode::Esc => {
+                    terminal::disable_raw_mode().unwrap();
+                    return None;
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
 
 
 // pub fn file_selector_ui() -> Option<String> {
 //     let mut current_dir = std::env::current_dir().expect("Failed to get current directory");
 //     let mut file_entries = get_file_entries(&current_dir);
-//     let mut selected_index = 0;
+//     let mut selected_index = 0;""
 
 //     let backend = ratatui::backend::CrosstermBackend::new(stdout());
 //     let mut terminal = Terminal::new(backend).unwrap();
